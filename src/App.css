@@ -1,0 +1,70 @@
+html,
+body,
+#root {
+    margin: 0;
+    height: 100%;
+    overflow: hidden;
+    font-family: system-ui, -apple-system, sans-serif;
+}
+
+.game-root {
+    position: fixed;
+    inset: 0;
+    background: #87ceeb;
+}
+
+.game-root > canvas {
+    position: absolute;
+    inset: 0;
+    display: block;
+}
+
+.crosshair {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 4px;
+    height: 4px;
+    margin: -2px 0 0 -2px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.85);
+    box-shadow: 0 0 4px rgba(0, 0, 0, 0.6);
+    pointer-events: none;
+    z-index: 10;
+}
+
+.overlay {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    background: rgba(0, 0, 0, 0.4);
+    color: white;
+    cursor: pointer;
+    z-index: 20;
+}
+
+.overlay .card {
+    padding: 28px 44px;
+    background: rgba(0, 0, 0, 0.55);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 12px;
+    text-align: center;
+    backdrop-filter: blur(4px);
+}
+
+.overlay h1 {
+    margin: 0 0 8px;
+    font-size: 30px;
+    letter-spacing: 1px;
+}
+
+.overlay p {
+    margin: 6px 0;
+}
+
+.overlay .hint {
+    font-size: 13px;
+    opacity: 0.8;
+    max-width: 360px;
+}
