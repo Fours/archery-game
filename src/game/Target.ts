@@ -18,6 +18,10 @@ const BANDS = [
     { inner: 0.22, outer: TARGET_RADIUS, color: 0x2b4f8c, score: 10 },
 ]
 
+const COOLING_TIME = 0.45
+const RELOAD_TIME = 0.55
+const RELOAD_SPIN_TURNS = 2
+
 export type Tier = 'green' | 'blue' | 'purple'
 
 const TIER_COLOR: Record<Tier, number> = {
@@ -39,14 +43,20 @@ export interface TargetHit {
     t: number
 }
 
+type State = 'idle' | 'cooling' | 'reloading'
+
 /**
  * A bullseye target. The target faces local +Z, which is the direction the player
  * must shoot from for a hit to register. The colored outer ring (green/blue/purple)
- * indicates the target's score multiplier.
+ * indicates the target's score multiplier and stays put even when the bullseye is
+ * destroyed; the bullseye itself shatters on hit and respawns with a spin.
  */
 export class Target {
     readonly object: THREE.Group
+    private bullseye: THREE.Group
     private multiplier: number
+    private state: State = 'idle'
+    private stateTime = 0
 
     constructor(position: THREE.Vector3, tier: Tier) {
         this.multiplier = TIER_MULTIPLIER[tier]
@@ -54,7 +64,11 @@ export class Target {
         this.object = new THREE.Group()
         this.object.position.copy(position)
 
-        // Dark wooden backing disk, slightly larger than the rings.
+        // The bullseye is the part that gets hidden + respawned; it owns the wooden
+        // backing and all scoring rings. The persistent tier ring is a sibling.
+        this.bullseye = new THREE.Group()
+        this.object.add(this.bullseye)
+
         const backing = new THREE.Mesh(
             new THREE.CylinderGeometry(BACKING_RADIUS, BACKING_RADIUS, BACKING_THICKNESS, 32),
             new THREE.MeshStandardMaterial({ color: 0x3d2812, roughness: 0.9 }),
@@ -64,7 +78,7 @@ export class Target {
         backing.position.z = -BACKING_THICKNESS / 2
         backing.castShadow = true
         backing.receiveShadow = true
-        this.object.add(backing)
+        this.bullseye.add(backing)
 
         // Concentric scoring rings. Tiny z offset per ring avoids z-fighting.
         BANDS.forEach((b, i) => {
@@ -77,10 +91,11 @@ export class Target {
                 new THREE.MeshStandardMaterial({ color: b.color, roughness: 0.85 }),
             )
             mesh.position.z = 0.001 * (i + 1)
-            this.object.add(mesh)
+            this.bullseye.add(mesh)
         })
 
         // Tier ring: small torus encircling the bullseye in the tier's color.
+        // Lives outside `bullseye` so it survives explosions.
         const ring = new THREE.Mesh(
             new THREE.TorusGeometry(TIER_RING_RADIUS, TIER_RING_TUBE, 12, 40),
             new THREE.MeshStandardMaterial({
@@ -99,9 +114,12 @@ export class Target {
     /**
      * Test whether the segment from→to (in world space) crosses this target's disk
      * coming from the +Z front face. Returns the hit point, multiplied score, and
-     * segment-t if so, otherwise null.
+     * segment-t if so, otherwise null. While cooling/reloading the target ignores
+     * arrows entirely.
      */
     testHit(from: THREE.Vector3, to: THREE.Vector3): TargetHit | null {
+        if (this.state !== 'idle') return null
+
         const localFrom = this.object.worldToLocal(from.clone())
         const localTo = this.object.worldToLocal(to.clone())
 
@@ -119,6 +137,43 @@ export class Target {
         const score = scoreForRadius(r) * this.multiplier
         const point = this.object.localToWorld(new THREE.Vector3(lx, ly, 0))
         return { point, score, t }
+    }
+
+    /** Mark the target as just-hit. Hides the bullseye for the cooling + reload phases. */
+    onHit(): void {
+        this.bullseye.visible = false
+        this.state = 'cooling'
+        this.stateTime = 0
+    }
+
+    /** Advance the hit→reload→idle state machine. */
+    update(dt: number): void {
+        if (this.state === 'idle') return
+
+        this.stateTime += dt
+
+        if (this.state === 'cooling') {
+            if (this.stateTime >= COOLING_TIME) {
+                this.state = 'reloading'
+                this.stateTime = 0
+                this.bullseye.visible = true
+            }
+            return
+        }
+
+        // Reloading: ease scale from 0.1→1 and spin around the disk's normal axis,
+        // landing at full size with identity rotation.
+        const t = Math.min(this.stateTime / RELOAD_TIME, 1)
+        const ease = 1 - (1 - t) * (1 - t) // ease-out (quadratic)
+        const scale = 0.1 + ease * 0.9
+        this.bullseye.scale.setScalar(scale)
+        this.bullseye.rotation.z = ease * Math.PI * 2 * RELOAD_SPIN_TURNS
+
+        if (t >= 1) {
+            this.state = 'idle'
+            this.bullseye.scale.setScalar(1)
+            this.bullseye.rotation.z = 0
+        }
     }
 
     dispose(): void {

@@ -5,8 +5,6 @@ const GRAVITY = 22
 const SHAFT_LENGTH = 0.75
 const SHAFT_RADIUS = 0.012
 const TIP_LENGTH = 0.08
-// Distance from the arrow's group origin (tail) to the tip along local -Z.
-const TIP_DIST = SHAFT_LENGTH + TIP_LENGTH
 
 export class Arrow {
     readonly object: THREE.Group
@@ -69,17 +67,6 @@ export class Arrow {
         const dir = this.velocity.clone().normalize()
         this.object.position.y = 0
         this.object.position.addScaledVector(dir, 0.06)
-        this.alignTo(this.velocity)
-        this.stuck = true
-    }
-
-    /** Stick the arrow at a world-space hit point with its tip embedded slightly
-     *  past the surface and its shaft trailing back along the incoming direction. */
-    stickAt(point: THREE.Vector3): void {
-        const dir = this.velocity.clone().normalize()
-        const embed = 0.05
-        // tip world = origin + dir * TIP_DIST, want tip = point + dir * embed.
-        this.object.position.copy(point).addScaledVector(dir, embed - TIP_DIST)
         this.alignTo(this.velocity)
         this.stuck = true
     }

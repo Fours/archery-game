@@ -2,6 +2,7 @@ import * as THREE from 'three'
 import { Arrow } from './Arrow'
 import { Booth, HALF_WIDTH, ROOF_Y } from './Booth'
 import { Bow } from './Bow'
+import { HitEffect } from './HitEffect'
 import { Target } from './Target'
 import type { Tier } from './Target'
 import { TargetRow } from './TargetRow'
@@ -51,6 +52,7 @@ export class Game {
     private targetRows: TargetRow[] = []
     private allTargets: Target[] = []
     private arrows: Arrow[] = []
+    private effects: HitEffect[] = []
     private grassTexture: THREE.Texture
 
     private locked = false
@@ -195,6 +197,8 @@ export class Game {
 
         for (const arrow of this.arrows) arrow.dispose()
         this.arrows = []
+        for (const effect of this.effects) effect.dispose()
+        this.effects = []
         for (const target of this.allTargets) target.dispose()
         this.allTargets = []
         this.targetRows = []
@@ -288,15 +292,20 @@ export class Game {
         this.arrows.push(arrow)
     }
 
-    private resolveArrowCollisions(arrow: Arrow): void {
+    /** Resolve a moving arrow against targets and the ground plane.
+     *  Returns 'target' if the arrow was consumed by a target hit (caller should
+     *  remove it from the scene), 'ground' if it stuck to the ground, or null. */
+    private resolveArrowCollisions(arrow: Arrow): 'target' | 'ground' | null {
         // Find the earliest target hit along this frame's segment, if any.
         let bestT = Infinity
-        let bestHit: { point: THREE.Vector3; score: number } | null = null
+        let bestHit:
+            | { point: THREE.Vector3; score: number; target: Target }
+            | null = null
         for (const target of this.allTargets) {
             const hit = target.testHit(arrow.prevPosition, arrow.object.position)
             if (hit && hit.t < bestT) {
                 bestT = hit.t
-                bestHit = { point: hit.point, score: hit.score }
+                bestHit = { point: hit.point, score: hit.score, target }
             }
         }
 
@@ -305,12 +314,19 @@ export class Game {
         const groundT = fy >= 0 && ty < 0 ? fy / (fy - ty) : Infinity
 
         if (bestHit && bestT <= groundT) {
-            arrow.stickAt(bestHit.point)
+            bestHit.target.onHit()
+            const effect = new HitEffect(bestHit.point, bestHit.score)
+            this.scene.add(effect.object)
+            this.effects.push(effect)
             this.score += bestHit.score
             this.onScoreChange(this.score)
-        } else if (groundT < Infinity) {
-            arrow.stickToGround()
+            return 'target'
         }
+        if (groundT < Infinity) {
+            arrow.stickToGround()
+            return 'ground'
+        }
+        return null
     }
 
     private onResize = (): void => {
@@ -334,11 +350,37 @@ export class Game {
 
         // Advance moving targets first so arrow hit-tests use this frame's positions.
         for (const row of this.targetRows) row.update(dt)
+        for (const target of this.allTargets) target.update(dt)
 
+        const consumed: Arrow[] = []
         for (const arrow of this.arrows) {
             if (arrow.isStuck) continue
             arrow.update(dt)
-            this.resolveArrowCollisions(arrow)
+            if (this.resolveArrowCollisions(arrow) === 'target') {
+                consumed.push(arrow)
+            }
+        }
+        if (consumed.length > 0) {
+            const consumedSet = new Set(consumed)
+            for (const a of consumed) {
+                this.scene.remove(a.object)
+                a.dispose()
+            }
+            this.arrows = this.arrows.filter((a) => !consumedSet.has(a))
+        }
+
+        // Advance hit effects, removing any that have expired this frame.
+        if (this.effects.length > 0) {
+            const survivors: HitEffect[] = []
+            for (const eff of this.effects) {
+                if (eff.update(dt)) {
+                    survivors.push(eff)
+                } else {
+                    this.scene.remove(eff.object)
+                    eff.dispose()
+                }
+            }
+            this.effects = survivors
         }
 
         this.renderer.render(this.scene, this.camera)
