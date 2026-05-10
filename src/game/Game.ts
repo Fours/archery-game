@@ -27,9 +27,9 @@ const ROW_CONFIGS: {
     direction: 1 | -1
     startCenterX: number
 }[] = [
-    { z: -5.0,  y: 1.5,                                 tier: 'green',  speed: 2.0, direction:  1, startCenterX:  0.0 },
-    { z: -9.5,  y: ROOF_Y - 1.0,                        tier: 'blue',   speed: 1.5, direction: -1, startCenterX: -1.0 },
-    { z: -13.5, y: (1.5 + (ROOF_Y - 1.0)) / 2,          tier: 'purple', speed: 1.1, direction:  1, startCenterX:  1.0 },
+    { z: -4.5,  y: 1.4,                                 tier: 'green',  speed: 2.0, direction:  1, startCenterX:  0.0 },
+    { z: -7.5,  y: ROOF_Y - 1.6,                        tier: 'blue',   speed: 1.5, direction: -1, startCenterX: -1.0 },
+    { z: -10.5, y: (1.4 + (ROOF_Y - 1.6)) / 2,          tier: 'purple', speed: 1.1, direction:  1, startCenterX:  1.0 },
 ]
 
 const TARGETS_PER_ROW = 3
@@ -299,13 +299,13 @@ export class Game {
         // Find the earliest target hit along this frame's segment, if any.
         let bestT = Infinity
         let bestHit:
-            | { point: THREE.Vector3; score: number; target: Target }
+            | { point: THREE.Vector3; score: number; multiplier: number; target: Target }
             | null = null
         for (const target of this.allTargets) {
             const hit = target.testHit(arrow.prevPosition, arrow.object.position)
             if (hit && hit.t < bestT) {
                 bestT = hit.t
-                bestHit = { point: hit.point, score: hit.score, target }
+                bestHit = { point: hit.point, score: hit.score, multiplier: hit.multiplier, target }
             }
         }
 
@@ -315,7 +315,7 @@ export class Game {
 
         if (bestHit && bestT <= groundT) {
             bestHit.target.onHit()
-            const effect = new HitEffect(bestHit.point, bestHit.score)
+            const effect = new HitEffect(bestHit.point, bestHit.score, bestHit.multiplier)
             this.scene.add(effect.object)
             this.effects.push(effect)
             this.score += bestHit.score

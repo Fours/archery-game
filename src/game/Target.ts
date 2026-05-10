@@ -21,6 +21,7 @@ const BANDS = [
 const COOLING_TIME = 0.45
 const RELOAD_TIME = 0.55
 const RELOAD_SPIN_TURNS = 2
+const MAX_HITS = 5
 
 export type Tier = 'green' | 'blue' | 'purple'
 
@@ -28,6 +29,13 @@ const TIER_COLOR: Record<Tier, number> = {
     green: 0x35c44a,
     blue: 0x2c6ee0,
     purple: 0x8e3ad1,
+}
+
+// Darkened tier colors shown on the ring after a target is permanently disabled.
+const TIER_DARK_COLOR: Record<Tier, number> = {
+    green: 0x0d3112,
+    blue: 0x0b1b38,
+    purple: 0x230e34,
 }
 
 const TIER_MULTIPLIER: Record<Tier, number> = {
@@ -39,11 +47,13 @@ const TIER_MULTIPLIER: Record<Tier, number> = {
 export interface TargetHit {
     point: THREE.Vector3
     score: number
+    /** Tier score multiplier applied to the base band score (1, 2, or 3). */
+    multiplier: number
     /** Parametric position along the segment from→to where the hit occurred. */
     t: number
 }
 
-type State = 'idle' | 'cooling' | 'reloading'
+type State = 'idle' | 'cooling' | 'reloading' | 'disabled'
 
 /**
  * A bullseye target. The target faces local +Z, which is the direction the player
@@ -54,11 +64,15 @@ type State = 'idle' | 'cooling' | 'reloading'
 export class Target {
     readonly object: THREE.Group
     private bullseye: THREE.Group
+    private ring: THREE.Mesh<THREE.TorusGeometry, THREE.MeshStandardMaterial>
+    private tier: Tier
     private multiplier: number
     private state: State = 'idle'
     private stateTime = 0
+    private hitCount = 0
 
     constructor(position: THREE.Vector3, tier: Tier) {
+        this.tier = tier
         this.multiplier = TIER_MULTIPLIER[tier]
 
         this.object = new THREE.Group()
@@ -96,7 +110,7 @@ export class Target {
 
         // Tier ring: small torus encircling the bullseye in the tier's color.
         // Lives outside `bullseye` so it survives explosions.
-        const ring = new THREE.Mesh(
+        this.ring = new THREE.Mesh(
             new THREE.TorusGeometry(TIER_RING_RADIUS, TIER_RING_TUBE, 12, 40),
             new THREE.MeshStandardMaterial({
                 color: TIER_COLOR[tier],
@@ -106,9 +120,9 @@ export class Target {
                 emissiveIntensity: 0.18,
             }),
         )
-        ring.position.z = 0.01
-        ring.castShadow = true
-        this.object.add(ring)
+        this.ring.position.z = 0.01
+        this.ring.castShadow = true
+        this.object.add(this.ring)
     }
 
     /**
@@ -136,7 +150,7 @@ export class Target {
 
         const score = scoreForRadius(r) * this.multiplier
         const point = this.object.localToWorld(new THREE.Vector3(lx, ly, 0))
-        return { point, score, t }
+        return { point, score, multiplier: this.multiplier, t }
     }
 
     /** Mark the target as just-hit. Hides the bullseye for the cooling + reload phases. */
@@ -144,18 +158,33 @@ export class Target {
         this.bullseye.visible = false
         this.state = 'cooling'
         this.stateTime = 0
+        this.hitCount++
     }
 
     /** Advance the hit→reload→idle state machine. */
     update(dt: number): void {
-        if (this.state === 'idle') return
+        if (this.state === 'idle' || this.state === 'disabled') return
 
         this.stateTime += dt
 
         if (this.state === 'cooling') {
             if (this.stateTime >= COOLING_TIME) {
+                if (this.hitCount >= MAX_HITS) {
+                    // Permanently disabled: bullseye stays hidden and the tier ring
+                    // dims to its dark variant so the player can read remaining targets.
+                    this.state = 'disabled'
+                    this.stateTime = 0
+                    const dark = TIER_DARK_COLOR[this.tier]
+                    this.ring.material.color.setHex(dark)
+                    this.ring.material.emissive.setHex(dark)
+                    return
+                }
                 this.state = 'reloading'
                 this.stateTime = 0
+                // Pose at the reload start before unhiding so we don't flash
+                // a full-size bullseye for one frame.
+                this.bullseye.scale.setScalar(0.1)
+                this.bullseye.rotation.z = 0
                 this.bullseye.visible = true
             }
             return

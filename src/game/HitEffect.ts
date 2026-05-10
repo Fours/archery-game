@@ -24,8 +24,10 @@ export class HitEffect {
     private sharedGeometry: THREE.BoxGeometry
     private scoreSprite: THREE.Sprite
     private scoreBaseY: number
+    private multiplierSprite: THREE.Sprite | null = null
+    private multiplierBaseY = 0
 
-    constructor(position: THREE.Vector3, score: number) {
+    constructor(position: THREE.Vector3, score: number, multiplier: number = 1) {
         this.object = new THREE.Group()
         this.object.position.copy(position)
 
@@ -36,6 +38,13 @@ export class HitEffect {
         this.scoreSprite.position.set(0, 0.7, 0)
         this.scoreBaseY = this.scoreSprite.position.y
         this.object.add(this.scoreSprite)
+
+        if (multiplier > 1) {
+            this.multiplierSprite = makeMultiplierSprite(multiplier)
+            this.multiplierBaseY = this.scoreBaseY + 0.55
+            this.multiplierSprite.position.set(0, this.multiplierBaseY, 0)
+            this.object.add(this.multiplierSprite)
+        }
     }
 
     private spawnParticles(): void {
@@ -95,6 +104,13 @@ export class HitEffect {
         const pop = 1 + Math.min(t * 5, 0.45)
         this.scoreSprite.scale.set(1.7 * pop, 0.85 * pop, 1)
 
+        if (this.multiplierSprite) {
+            this.multiplierSprite.position.y = this.multiplierBaseY + t * 0.8
+            const mMat = this.multiplierSprite.material as THREE.SpriteMaterial
+            mMat.opacity = Math.max(0, 1 - t * t)
+            this.multiplierSprite.scale.set(1.1 * pop, 0.55 * pop, 1)
+        }
+
         return true
     }
 
@@ -143,5 +159,34 @@ function makeScoreSprite(score: number): THREE.Sprite {
     })
     const sprite = new THREE.Sprite(mat)
     sprite.scale.set(1.7, 0.85, 1)
+    return sprite
+}
+
+function makeMultiplierSprite(multiplier: number): THREE.Sprite {
+    const canvas = document.createElement('canvas')
+    canvas.width = 256
+    canvas.height = 128
+    const ctx = canvas.getContext('2d')
+    if (!ctx) throw new Error('2D canvas context unavailable')
+
+    ctx.font = 'bold 72px system-ui, -apple-system, sans-serif'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.lineWidth = 9
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.9)'
+    ctx.fillStyle = '#ffffff'
+    const text = `${multiplier}x`
+    ctx.strokeText(text, 128, 64)
+    ctx.fillText(text, 128, 64)
+
+    const tex = new THREE.CanvasTexture(canvas)
+    tex.colorSpace = THREE.SRGBColorSpace
+    const mat = new THREE.SpriteMaterial({
+        map: tex,
+        transparent: true,
+        depthWrite: false,
+    })
+    const sprite = new THREE.Sprite(mat)
+    sprite.scale.set(1.1, 0.55, 1)
     return sprite
 }
