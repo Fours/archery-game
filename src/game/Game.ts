@@ -1,6 +1,10 @@
 import * as THREE from 'three'
 import { Arrow } from './Arrow'
+import { Booth, HALF_WIDTH, ROOF_Y } from './Booth'
 import { Bow } from './Bow'
+import { Target } from './Target'
+import type { Tier } from './Target'
+import { TargetRow } from './TargetRow'
 
 const EYE_HEIGHT = 1.7
 const MAX_DRAW_TIME = 2.0
@@ -9,16 +13,43 @@ const MAX_ARROW_SPEED = 65
 const MOUSE_SENSITIVITY = 0.0022
 const MAX_PITCH = Math.PI / 2 - 0.001
 
+// Rows are arranged front→middle→back (closest to player first). The user spec:
+//   - The furthest row sits at the booth's vertical middle.
+//   - The nearer two rows sit above and below it.
+//   - Adjacent rows move in opposite horizontal directions.
+//   - Front = green ×1, middle = blue ×2, back = purple ×3 (handled by Tier).
+const ROW_CONFIGS: {
+    z: number
+    y: number
+    tier: Tier
+    speed: number
+    direction: 1 | -1
+    startCenterX: number
+}[] = [
+    { z: -5.0,  y: 1.5,                                 tier: 'green',  speed: 2.0, direction:  1, startCenterX:  0.0 },
+    { z: -9.5,  y: ROOF_Y - 1.0,                        tier: 'blue',   speed: 1.5, direction: -1, startCenterX: -1.0 },
+    { z: -13.5, y: (1.5 + (ROOF_Y - 1.0)) / 2,          tier: 'purple', speed: 1.1, direction:  1, startCenterX:  1.0 },
+]
+
+const TARGETS_PER_ROW = 3
+const ROW_TARGET_SPACING = 2.6
+const ROW_EDGE_PADDING = 0.7 // keep targets away from side walls
+
 type LockListener = (locked: boolean) => void
+type ScoreListener = (score: number) => void
 
 export class Game {
     private container: HTMLElement
     private onLockChange: LockListener
+    private onScoreChange: ScoreListener
 
     private renderer: THREE.WebGLRenderer
     private scene: THREE.Scene
     private camera: THREE.PerspectiveCamera
     private bow: Bow
+    private booth: Booth
+    private targetRows: TargetRow[] = []
+    private allTargets: Target[] = []
     private arrows: Arrow[] = []
     private grassTexture: THREE.Texture
 
@@ -29,13 +60,20 @@ export class Game {
     private drawing = false
     private drawTime = 0
 
+    private score = 0
+
     private running = true
     private frameId = 0
     private lastTime = 0
 
-    constructor(container: HTMLElement, onLockChange: LockListener) {
+    constructor(
+        container: HTMLElement,
+        onLockChange: LockListener,
+        onScoreChange: ScoreListener,
+    ) {
         this.container = container
         this.onLockChange = onLockChange
+        this.onScoreChange = onScoreChange
 
         this.renderer = new THREE.WebGLRenderer({ antialias: true })
         this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
@@ -64,12 +102,13 @@ export class Game {
         sun.position.set(40, 60, 30)
         sun.castShadow = true
         sun.shadow.mapSize.set(1024, 1024)
-        sun.shadow.camera.left = -50
-        sun.shadow.camera.right = 50
-        sun.shadow.camera.top = 50
-        sun.shadow.camera.bottom = -50
+        // Shadow frustum widened to cover the larger booth footprint.
+        sun.shadow.camera.left = -60
+        sun.shadow.camera.right = 60
+        sun.shadow.camera.top = 60
+        sun.shadow.camera.bottom = -60
         sun.shadow.camera.near = 1
-        sun.shadow.camera.far = 200
+        sun.shadow.camera.far = 220
         this.scene.add(sun)
 
         this.grassTexture = createGrassTexture()
@@ -80,6 +119,11 @@ export class Game {
         ground.rotation.x = -Math.PI / 2
         ground.receiveShadow = true
         this.scene.add(ground)
+
+        this.booth = new Booth()
+        this.scene.add(this.booth.group)
+
+        this.buildTargetRows()
 
         this.bow = new Bow()
         this.bow.group.position.set(0.28, -0.18, -0.55)
@@ -93,6 +137,40 @@ export class Game {
 
         this.lastTime = performance.now()
         this.frameId = requestAnimationFrame(this.animate)
+    }
+
+    private buildTargetRows(): void {
+        // Center the offsets around 0 so each row's center == row midpoint.
+        const totalSpan = (TARGETS_PER_ROW - 1) * ROW_TARGET_SPACING
+        const offsets: number[] = []
+        for (let i = 0; i < TARGETS_PER_ROW; i++) {
+            offsets.push(-totalSpan / 2 + i * ROW_TARGET_SPACING)
+        }
+        // Center-X bounds so even the outermost target stays inside the side walls.
+        const maxOffset = Math.max(...offsets.map((v) => Math.abs(v)))
+        const centerLimit = HALF_WIDTH - ROW_EDGE_PADDING - maxOffset
+
+        for (const cfg of ROW_CONFIGS) {
+            const targets: Target[] = []
+            for (let i = 0; i < TARGETS_PER_ROW; i++) {
+                const t = new Target(new THREE.Vector3(0, cfg.y, cfg.z), cfg.tier)
+                this.scene.add(t.object)
+                targets.push(t)
+                this.allTargets.push(t)
+            }
+            const row = new TargetRow({
+                targets,
+                offsets,
+                y: cfg.y,
+                z: cfg.z,
+                speed: cfg.speed,
+                direction: cfg.direction,
+                bounds: { min: -centerLimit, max: centerLimit },
+                startCenterX: clamp(cfg.startCenterX, -centerLimit, centerLimit),
+            })
+            this.targetRows.push(row)
+        }
+
     }
 
     requestLock(): void {
@@ -117,6 +195,10 @@ export class Game {
 
         for (const arrow of this.arrows) arrow.dispose()
         this.arrows = []
+        for (const target of this.allTargets) target.dispose()
+        this.allTargets = []
+        this.targetRows = []
+        this.booth.dispose()
         this.bow.dispose()
 
         this.scene.traverse((obj) => {
@@ -206,6 +288,31 @@ export class Game {
         this.arrows.push(arrow)
     }
 
+    private resolveArrowCollisions(arrow: Arrow): void {
+        // Find the earliest target hit along this frame's segment, if any.
+        let bestT = Infinity
+        let bestHit: { point: THREE.Vector3; score: number } | null = null
+        for (const target of this.allTargets) {
+            const hit = target.testHit(arrow.prevPosition, arrow.object.position)
+            if (hit && hit.t < bestT) {
+                bestT = hit.t
+                bestHit = { point: hit.point, score: hit.score }
+            }
+        }
+
+        const fy = arrow.prevPosition.y
+        const ty = arrow.object.position.y
+        const groundT = fy >= 0 && ty < 0 ? fy / (fy - ty) : Infinity
+
+        if (bestHit && bestT <= groundT) {
+            arrow.stickAt(bestHit.point)
+            this.score += bestHit.score
+            this.onScoreChange(this.score)
+        } else if (groundT < Infinity) {
+            arrow.stickToGround()
+        }
+    }
+
     private onResize = (): void => {
         this.camera.aspect = window.innerWidth / window.innerHeight
         this.camera.updateProjectionMatrix()
@@ -225,10 +332,21 @@ export class Game {
             this.bow.setDraw(this.drawTime / MAX_DRAW_TIME)
         }
 
-        for (const arrow of this.arrows) arrow.update(dt)
+        // Advance moving targets first so arrow hit-tests use this frame's positions.
+        for (const row of this.targetRows) row.update(dt)
+
+        for (const arrow of this.arrows) {
+            if (arrow.isStuck) continue
+            arrow.update(dt)
+            this.resolveArrowCollisions(arrow)
+        }
 
         this.renderer.render(this.scene, this.camera)
     }
+}
+
+function clamp(v: number, lo: number, hi: number): number {
+    return Math.max(lo, Math.min(hi, v))
 }
 
 function createGrassTexture(): THREE.Texture {

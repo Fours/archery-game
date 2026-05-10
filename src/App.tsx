@@ -6,10 +6,11 @@ function App() {
     const containerRef = useRef<HTMLDivElement>(null)
     const gameRef = useRef<Game | null>(null)
     const [locked, setLocked] = useState(false)
+    const [score, setScore] = useState(0)
 
     useEffect(() => {
         if (!containerRef.current) return
-        const game = new Game(containerRef.current, setLocked)
+        const game = new Game(containerRef.current, setLocked, setScore)
         gameRef.current = game
         return () => {
             game.dispose()
@@ -34,6 +35,7 @@ function App() {
                     </div>
                 </div>
             )}
+            <div className="score">Score: {score}</div>
             <div className="crosshair" />
         </div>
     )

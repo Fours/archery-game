@@ -5,9 +5,12 @@ const GRAVITY = 22
 const SHAFT_LENGTH = 0.75
 const SHAFT_RADIUS = 0.012
 const TIP_LENGTH = 0.08
+// Distance from the arrow's group origin (tail) to the tip along local -Z.
+const TIP_DIST = SHAFT_LENGTH + TIP_LENGTH
 
 export class Arrow {
     readonly object: THREE.Group
+    readonly prevPosition = new THREE.Vector3()
     private velocity = new THREE.Vector3()
     private stuck = false
 
@@ -39,27 +42,46 @@ export class Arrow {
         this.object = group
     }
 
+    get isStuck(): boolean {
+        return this.stuck
+    }
+
     launch(origin: THREE.Vector3, direction: THREE.Vector3, speed: number): void {
         this.object.position.copy(origin)
+        this.prevPosition.copy(origin)
         this.alignTo(direction)
         this.velocity.copy(direction).setLength(speed)
         this.stuck = false
     }
 
+    /** Integrate physics for this frame. Caller is responsible for sticking
+     *  the arrow on hit (use `prevPosition` and `object.position` as the segment). */
     update(dt: number): void {
         if (this.stuck) return
-
+        this.prevPosition.copy(this.object.position)
         this.velocity.y -= GRAVITY * dt
         this.object.position.addScaledVector(this.velocity, dt)
         this.alignTo(this.velocity)
+    }
 
-        if (this.object.position.y <= 0) {
-            // Snap to ground and embed the tip slightly along travel direction.
-            const dir = this.velocity.clone().normalize()
-            this.object.position.y = 0
-            this.object.position.addScaledVector(dir, 0.06)
-            this.stuck = true
-        }
+    /** Snap to the ground plane and embed the tip slightly along travel direction. */
+    stickToGround(): void {
+        const dir = this.velocity.clone().normalize()
+        this.object.position.y = 0
+        this.object.position.addScaledVector(dir, 0.06)
+        this.alignTo(this.velocity)
+        this.stuck = true
+    }
+
+    /** Stick the arrow at a world-space hit point with its tip embedded slightly
+     *  past the surface and its shaft trailing back along the incoming direction. */
+    stickAt(point: THREE.Vector3): void {
+        const dir = this.velocity.clone().normalize()
+        const embed = 0.05
+        // tip world = origin + dir * TIP_DIST, want tip = point + dir * embed.
+        this.object.position.copy(point).addScaledVector(dir, embed - TIP_DIST)
+        this.alignTo(this.velocity)
+        this.stuck = true
     }
 
     private alignTo(direction: THREE.Vector3): void {
