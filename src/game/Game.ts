@@ -20,6 +20,7 @@ const MIN_ARROW_SPEED = 18
 const MAX_ARROW_SPEED = 65
 const MOUSE_SENSITIVITY = 0.0022
 const MAX_PITCH = Math.PI / 2 - 0.001
+const ROUND_DURATION = 120
 
 // Rows are arranged front→middle→back (closest to player first). The user spec:
 //   - The furthest row sits at the booth's vertical middle.
@@ -46,12 +47,14 @@ const ROW_EDGE_PADDING = 0.7 // keep targets away from side walls
 type LockListener = (locked: boolean) => void
 type ScoreListener = (score: number) => void
 type GameOverListener = (gameOver: boolean) => void
+type TimeListener = (timeLeft: number) => void
 
 export class Game {
     private container: HTMLElement
     private onLockChange: LockListener
     private onScoreChange: ScoreListener
     private onGameOver: GameOverListener
+    private onTimeChange: TimeListener
 
     private renderer: THREE.WebGLRenderer
     private scene: THREE.Scene
@@ -80,6 +83,8 @@ export class Game {
 
     private score = 0
     private gameOver = false
+    private timeLeft = ROUND_DURATION
+    private lastEmittedTime = Math.ceil(ROUND_DURATION)
 
     private running = true
     private frameId = 0
@@ -90,11 +95,13 @@ export class Game {
         onLockChange: LockListener,
         onScoreChange: ScoreListener,
         onGameOver: GameOverListener,
+        onTimeChange: TimeListener,
     ) {
         this.container = container
         this.onLockChange = onLockChange
         this.onScoreChange = onScoreChange
         this.onGameOver = onGameOver
+        this.onTimeChange = onTimeChange
 
         this.renderer = new THREE.WebGLRenderer({ antialias: true })
         this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
@@ -243,10 +250,26 @@ export class Game {
 
         this.score = 0
         this.onScoreChange(0)
+        this.timeLeft = ROUND_DURATION
+        this.lastEmittedTime = Math.ceil(ROUND_DURATION)
+        this.onTimeChange(this.lastEmittedTime)
         this.gameOver = false
         this.onGameOver(false)
         // Avoid a large dt spike on the first frame back.
         this.lastTime = performance.now()
+    }
+
+    private triggerGameOver(): void {
+        this.gameOver = true
+        // Cancel any in-flight draw and free the cursor so the overlay is clickable.
+        this.spaceHeld = false
+        this.drawing = false
+        this.drawTime = 0
+        this.bow.setDraw(0)
+        if (document.pointerLockElement === this.renderer.domElement) {
+            document.exitPointerLock()
+        }
+        this.onGameOver(true)
     }
 
     dispose(): void {
@@ -420,6 +443,15 @@ export class Game {
         this.lastTime = now
 
         if (!this.gameOver) {
+            if (this.locked) {
+                this.timeLeft = Math.max(0, this.timeLeft - dt)
+                const displayTime = Math.ceil(this.timeLeft)
+                if (displayTime !== this.lastEmittedTime) {
+                    this.lastEmittedTime = displayTime
+                    this.onTimeChange(displayTime)
+                }
+            }
+
             if (this.drawing) {
                 this.drawTime = Math.min(this.drawTime + dt, MAX_DRAW_TIME)
                 this.bow.setDraw(this.drawTime / MAX_DRAW_TIME)
@@ -460,17 +492,8 @@ export class Game {
                 this.effects = survivors
             }
 
-            if (this.allTargets.every((t) => t.isDisabled)) {
-                this.gameOver = true
-                // Cancel any in-flight draw and free the cursor so the overlay is clickable.
-                this.spaceHeld = false
-                this.drawing = false
-                this.drawTime = 0
-                this.bow.setDraw(0)
-                if (document.pointerLockElement === this.renderer.domElement) {
-                    document.exitPointerLock()
-                }
-                this.onGameOver(true)
+            if (this.timeLeft <= 0 || this.allTargets.every((t) => t.isDisabled)) {
+                this.triggerGameOver()
             }
         }
 

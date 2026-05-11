@@ -8,10 +8,11 @@ function App() {
     const [locked, setLocked] = useState(false)
     const [score, setScore] = useState(0)
     const [gameOver, setGameOver] = useState(false)
+    const [timeLeft, setTimeLeft] = useState(120)
 
     useEffect(() => {
         if (!containerRef.current) return
-        const game = new Game(containerRef.current, setLocked, setScore, setGameOver)
+        const game = new Game(containerRef.current, setLocked, setScore, setGameOver, setTimeLeft)
         gameRef.current = game
         return () => {
             game.dispose()
@@ -57,7 +58,8 @@ function App() {
                     </div>
                 </div>
             )}
-            <div className="score">Score: {score}</div>
+            <div className="timer">TIME LEFT: {timeLeft}</div>
+            <div className="score">SCORE: {score}</div>
             {!gameOver && <div className="crosshair" />}
         </div>
     )
