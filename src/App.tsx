@@ -27,10 +27,10 @@ function App() {
             {!locked && (
                 <div className="overlay">
                     <div className="card">
-                        <h1>Archery</h1>
+                        <h1>Archery Blitz</h1>
                         <p>Click to play</p>
                         <p className="hint">
-                            Mouse to aim · Hold SPACE to draw the bow · Release to fire · ESC to free the cursor
+                            Mouse to aim · Hold SPACE to draw the bow<br />Release to fire · ESC to free the cursor
                         </p>
                     </div>
                 </div>
