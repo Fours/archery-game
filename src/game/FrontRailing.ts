@@ -22,8 +22,8 @@ const QUIVER_COLOR = 0x4a2e10
 const QUIVER_TRIM_COLOR = 0x1f140a
 // Quiver center for scale 2 + rot.x = -LEAN, bottom on ground, top contacting
 // the counter top edge near y=0.95 along the cylinder's axis.
-const QUIVER_Y_G = 0.508
-const QUIVER_Z_G = -1.813
+const QUIVER_Y_G = 0.508 // 0.508
+const QUIVER_Z_G = -1.7 // -1.813 
 
 const ARROW_SHAFT_LEN = 0.7
 const ARROW_SHAFT_RADIUS = 0.01
