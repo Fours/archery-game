@@ -25,20 +25,20 @@ const MAX_HITS = 5
 
 export type Tier = 'green' | 'blue' | 'purple'
 
-const TIER_COLOR: Record<Tier, number> = {
+export const TIER_COLOR: Record<Tier, number> = {
     green: 0x35c44a,
     blue: 0x2c6ee0,
     purple: 0x8e3ad1,
 }
 
 // Darkened tier colors shown on the ring after a target is permanently disabled.
-const TIER_DARK_COLOR: Record<Tier, number> = {
+export const TIER_DARK_COLOR: Record<Tier, number> = {
     green: 0x0d3112,
     blue: 0x0b1b38,
     purple: 0x230e34,
 }
 
-const TIER_MULTIPLIER: Record<Tier, number> = {
+export const TIER_MULTIPLIER: Record<Tier, number> = {
     green: 1,
     blue: 2,
     purple: 3,
@@ -184,24 +184,24 @@ export class Target {
                 // Pose at the reload start before unhiding so we don't flash
                 // a full-size bullseye for one frame.
                 this.bullseye.scale.setScalar(0.1)
-                this.bullseye.rotation.z = 0
+                this.bullseye.rotation.y = 0
                 this.bullseye.visible = true
             }
             return
         }
 
-        // Reloading: ease scale from 0.1→1 and spin around the disk's normal axis,
-        // landing at full size with identity rotation.
+        // Reloading: ease scale from 0.1→1 and spin around the vertical axis like
+        // a coin on edge, landing face-on at full size with identity rotation.
         const t = Math.min(this.stateTime / RELOAD_TIME, 1)
         const ease = 1 - (1 - t) * (1 - t) // ease-out (quadratic)
         const scale = 0.1 + ease * 0.9
         this.bullseye.scale.setScalar(scale)
-        this.bullseye.rotation.z = ease * Math.PI * 2 * RELOAD_SPIN_TURNS
+        this.bullseye.rotation.y = ease * Math.PI * 2 * RELOAD_SPIN_TURNS
 
         if (t >= 1) {
             this.state = 'idle'
             this.bullseye.scale.setScalar(1)
-            this.bullseye.rotation.z = 0
+            this.bullseye.rotation.y = 0
         }
     }
 

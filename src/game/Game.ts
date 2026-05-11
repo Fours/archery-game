@@ -1,9 +1,16 @@
 import * as THREE from 'three'
 import { Arrow } from './Arrow'
+import { Barrels } from './Barrels'
 import { Booth, HALF_WIDTH, ROOF_Y } from './Booth'
 import { Bow } from './Bow'
+import { CornerBows } from './CornerBows'
+import { Flowers } from './Flowers'
+import { FrontRailing } from './FrontRailing'
 import { HitEffect } from './HitEffect'
+import { Plants } from './Plants'
+import { RowFlags } from './RowFlags'
 import { Target } from './Target'
+import { Trees } from './Trees'
 import type { Tier } from './Target'
 import { TargetRow } from './TargetRow'
 
@@ -48,7 +55,14 @@ export class Game {
     private scene: THREE.Scene
     private camera: THREE.PerspectiveCamera
     private bow: Bow
+    private barrels: Barrels
     private booth: Booth
+    private cornerBows: CornerBows
+    private flowers: Flowers
+    private frontRailing: FrontRailing
+    private plants: Plants
+    private rowFlags: RowFlags
+    private trees: Trees
     private targetRows: TargetRow[] = []
     private allTargets: Target[] = []
     private arrows: Arrow[] = []
@@ -125,6 +139,29 @@ export class Game {
         this.booth = new Booth()
         this.scene.add(this.booth.group)
 
+        this.cornerBows = new CornerBows()
+        this.scene.add(this.cornerBows.group)
+
+        this.frontRailing = new FrontRailing()
+        this.scene.add(this.frontRailing.group)
+
+        this.barrels = new Barrels()
+        this.scene.add(this.barrels.group)
+
+        this.trees = new Trees()
+        this.scene.add(this.trees.group)
+
+        this.flowers = new Flowers()
+        this.scene.add(this.flowers.group)
+
+        this.plants = new Plants()
+        this.scene.add(this.plants.group)
+
+        this.rowFlags = new RowFlags(
+            ROW_CONFIGS.map((c) => ({ tier: c.tier, z: c.z, y: c.y })),
+        )
+        this.scene.add(this.rowFlags.group)
+
         this.buildTargetRows()
 
         this.bow = new Bow()
@@ -169,7 +206,10 @@ export class Game {
                 direction: cfg.direction,
                 bounds: { min: -centerLimit, max: centerLimit },
                 startCenterX: clamp(cfg.startCenterX, -centerLimit, centerLimit),
+                tier: cfg.tier,
+                halfWidth: HALF_WIDTH,
             })
+            this.scene.add(row.barsGroup)
             this.targetRows.push(row)
         }
 
@@ -201,8 +241,16 @@ export class Game {
         this.effects = []
         for (const target of this.allTargets) target.dispose()
         this.allTargets = []
+        for (const row of this.targetRows) row.dispose()
         this.targetRows = []
+        this.barrels.dispose()
         this.booth.dispose()
+        this.cornerBows.dispose()
+        this.frontRailing.dispose()
+        this.flowers.dispose()
+        this.plants.dispose()
+        this.rowFlags.dispose()
+        this.trees.dispose()
         this.bow.dispose()
 
         this.scene.traverse((obj) => {

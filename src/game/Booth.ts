@@ -44,14 +44,27 @@ export class Booth {
         const darkWoodMat = new THREE.MeshStandardMaterial({ color: DARK_WOOD, roughness: 0.9 })
         const redMat = new THREE.MeshStandardMaterial({ color: RED, roughness: 0.85 })
         const whiteMat = new THREE.MeshStandardMaterial({ color: WHITE, roughness: 0.85 })
+        const housingMat = new THREE.MeshStandardMaterial({
+            color: 0x1a1a1a,
+            roughness: 0.45,
+            metalness: 0.7,
+        })
+        const bulbMat = new THREE.MeshStandardMaterial({
+            color: 0xfff2cc,
+            emissive: 0xffd97a,
+            emissiveIntensity: 1.6,
+            roughness: 0.4,
+        })
 
         this.addPosts(darkWoodMat)
         this.addWalls(woodMat)
         this.addCounter(woodMat, darkWoodMat)
-        this.addRoof(redMat)
+        this.addRoof(redMat, whiteMat)
         this.addValance(redMat, whiteMat)
         this.addFlagpoles(darkWoodMat)
         this.addAllBunting()
+        this.addInteriorBunting()
+        this.addCornerLights(housingMat, bulbMat)
     }
 
     private addPosts(mat: THREE.Material): void {
@@ -105,19 +118,22 @@ export class Booth {
         this.group.add(front)
     }
 
-    private addRoof(mat: THREE.Material): void {
+    private addRoof(redMat: THREE.Material, whiteMat: THREE.Material): void {
+        // Red/white candy stripes running front-to-back, aligned with the valance below.
         const sideLen = Math.abs(BACK_Z - FRONT_Z)
         const overhang = 0.25
-        const geo = new THREE.BoxGeometry(
-            HALF_WIDTH * 2 + overhang,
-            0.08,
-            sideLen + overhang,
-        )
-        const roof = new THREE.Mesh(geo, mat)
-        roof.position.set(0, ROOF_Y, (FRONT_Z + BACK_Z) / 2)
-        roof.castShadow = true
-        roof.receiveShadow = true
-        this.group.add(roof)
+        const totalWidth = HALF_WIDTH * 2 + overhang
+        const totalDepth = sideLen + overhang
+        const stripeWidth = totalWidth / VALANCE_STRIPES
+        const stripeGeo = new THREE.BoxGeometry(stripeWidth, 0.08, totalDepth)
+        for (let i = 0; i < VALANCE_STRIPES; i++) {
+            const x = -totalWidth / 2 + (i + 0.5) * stripeWidth
+            const stripe = new THREE.Mesh(stripeGeo, i % 2 === 0 ? redMat : whiteMat)
+            stripe.position.set(x, ROOF_Y, (FRONT_Z + BACK_Z) / 2)
+            stripe.castShadow = true
+            stripe.receiveShadow = true
+            this.group.add(stripe)
+        }
     }
 
     private addValance(redMat: THREE.Material, whiteMat: THREE.Material): void {
@@ -153,6 +169,96 @@ export class Booth {
             pennant.position.set(x, ROOF_Y + FLAGPOLE_HEIGHT - 0.05, z)
             pennant.rotation.y = Math.PI / 2
             this.group.add(pennant)
+        }
+    }
+
+    private addInteriorBunting(): void {
+        // One continuous flag garland strung along the left, back, and right
+        // interior walls. Anchors hug just inside the wall surfaces (offset
+        // by `inset` to avoid z-fighting with wall geometry); each segment
+        // between consecutive anchors swoops with parabolic sag.
+        const inset = 0.05
+        const yTop = ROOF_Y - 0.25
+        const sag = 0.7
+        const flagsPerSwag = 11
+
+        const minX = -HALF_WIDTH + inset
+        const maxX = HALF_WIDTH - inset
+        const innerBackZ = BACK_Z + inset
+        const span = BACK_Z - FRONT_Z
+        const sideZ1 = FRONT_Z + span / 3
+        const sideZ2 = FRONT_Z + (2 * span) / 3
+
+        // Walk left-front → back-left corner → across back wall → back-right
+        // corner → right-front. Corners are single shared anchors so the
+        // garland reads as one continuous string.
+        const anchors: THREE.Vector3[] = [
+            new THREE.Vector3(minX, yTop, FRONT_Z),
+            new THREE.Vector3(minX, yTop, sideZ1),
+            new THREE.Vector3(minX, yTop, sideZ2),
+            new THREE.Vector3(minX, yTop, innerBackZ),
+            new THREE.Vector3(0, yTop, innerBackZ),
+            new THREE.Vector3(maxX, yTop, innerBackZ),
+            new THREE.Vector3(maxX, yTop, sideZ2),
+            new THREE.Vector3(maxX, yTop, sideZ1),
+            new THREE.Vector3(maxX, yTop, FRONT_Z),
+        ]
+
+        for (let i = 0; i < anchors.length - 1; i++) {
+            addBunting(this.group, anchors[i], anchors[i + 1], flagsPerSwag, sag)
+        }
+    }
+
+    private addCornerLights(housingMat: THREE.Material, bulbMat: THREE.Material): void {
+        // Four flared spotlight fixtures mounted at the inside top corners,
+        // all aimed at a shared point near the booth's interior center so the
+        // beams cross-illuminate the targets.
+        const insetX = 0.4
+        const insetZ = 0.4
+        const dropY = 0.4
+        const aim = new THREE.Vector3(0, 1.2, (FRONT_Z + BACK_Z) / 2)
+
+        const sharedTarget = new THREE.Object3D()
+        sharedTarget.position.copy(aim)
+        this.group.add(sharedTarget)
+
+        const housingGeo = new THREE.CylinderGeometry(0.05, 0.11, 0.18, 12)
+        const bulbGeo = new THREE.SphereGeometry(0.07, 12, 8)
+
+        const corners: [number, number][] = [
+            [-HALF_WIDTH + insetX, FRONT_Z - insetZ],
+            [HALF_WIDTH - insetX, FRONT_Z - insetZ],
+            [-HALF_WIDTH + insetX, BACK_Z + insetZ],
+            [HALF_WIDTH - insetX, BACK_Z + insetZ],
+        ]
+
+        for (const [x, z] of corners) {
+            const fixture = new THREE.Group()
+            fixture.position.set(x, ROOF_Y - dropY, z)
+            // After lookAt, fixture-local -Z points at `aim`.
+            fixture.lookAt(aim)
+
+            // rotation.x = π/2 maps the cylinder's wide -Y end to fixture-local -Z,
+            // so the flared opening faces the target.
+            const housing = new THREE.Mesh(housingGeo, housingMat)
+            housing.rotation.x = Math.PI / 2
+            housing.position.z = -0.09
+            housing.castShadow = true
+            fixture.add(housing)
+
+            const bulb = new THREE.Mesh(bulbGeo, bulbMat)
+            bulb.position.z = -0.16
+            fixture.add(bulb)
+
+            this.group.add(fixture)
+
+            // SpotLight is a sibling rather than a child so its target reference
+            // doesn't fight the fixture's lookAt orientation. Shadow casting is
+            // off — the directional sun already provides the scene's shadows.
+            const spot = new THREE.SpotLight(0xffe4a0, 8, 22, Math.PI / 5, 0.5, 1.0)
+            spot.position.set(x, ROOF_Y - dropY, z)
+            spot.target = sharedTarget
+            this.group.add(spot)
         }
     }
 
