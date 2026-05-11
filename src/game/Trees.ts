@@ -67,9 +67,6 @@ const TREES: TreeSpec[] = [
     { x:   9, z: 22,  scale: 1.1 },
     { x:   0, z: 19,  scale: 2.5 },
     { x:  -4, z: 28,  scale: 2.2 },
-
-    // Tall tree far behind the booth so its top is visible over the roof.
-    { x: -10, z: -22, scale: 3.0 },
 ]
 
 /**
