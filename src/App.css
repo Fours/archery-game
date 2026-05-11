@@ -86,3 +86,52 @@ body,
     opacity: 0.8;
     max-width: 360px;
 }
+
+.overlay .card.game-over {
+    padding: 36px 64px;
+    cursor: default;
+}
+
+.overlay .game-over h1 {
+    font-size: 44px;
+    margin-bottom: 18px;
+}
+
+.overlay .final-score-label {
+    text-transform: uppercase;
+    letter-spacing: 3px;
+    font-size: 12px;
+    opacity: 0.7;
+    margin: 0;
+}
+
+.overlay .final-score {
+    margin: 6px 0 24px;
+    font-size: 96px;
+    font-weight: 700;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+    color: #ffd966;
+    text-shadow: 0 2px 12px rgba(0, 0, 0, 0.6);
+}
+
+.overlay .new-game {
+    padding: 12px 28px;
+    font-size: 16px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    color: #fff;
+    background: rgba(255, 255, 255, 0.12);
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.15s ease, transform 0.05s ease;
+}
+
+.overlay .new-game:hover {
+    background: rgba(255, 255, 255, 0.22);
+}
+
+.overlay .new-game:active {
+    transform: translateY(1px);
+}

@@ -45,11 +45,13 @@ const ROW_EDGE_PADDING = 0.7 // keep targets away from side walls
 
 type LockListener = (locked: boolean) => void
 type ScoreListener = (score: number) => void
+type GameOverListener = (gameOver: boolean) => void
 
 export class Game {
     private container: HTMLElement
     private onLockChange: LockListener
     private onScoreChange: ScoreListener
+    private onGameOver: GameOverListener
 
     private renderer: THREE.WebGLRenderer
     private scene: THREE.Scene
@@ -77,6 +79,7 @@ export class Game {
     private drawTime = 0
 
     private score = 0
+    private gameOver = false
 
     private running = true
     private frameId = 0
@@ -86,10 +89,12 @@ export class Game {
         container: HTMLElement,
         onLockChange: LockListener,
         onScoreChange: ScoreListener,
+        onGameOver: GameOverListener,
     ) {
         this.container = container
         this.onLockChange = onLockChange
         this.onScoreChange = onScoreChange
+        this.onGameOver = onGameOver
 
         this.renderer = new THREE.WebGLRenderer({ antialias: true })
         this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
@@ -216,9 +221,32 @@ export class Game {
     }
 
     requestLock(): void {
+        if (this.gameOver) return
         if (!this.locked) {
             this.renderer.domElement.requestPointerLock()
         }
+    }
+
+    /** Reset the round: clear arrows/effects, restore targets, zero the score, resume play. */
+    restart(): void {
+        for (const arrow of this.arrows) {
+            this.scene.remove(arrow.object)
+            arrow.dispose()
+        }
+        this.arrows = []
+        for (const effect of this.effects) {
+            this.scene.remove(effect.object)
+            effect.dispose()
+        }
+        this.effects = []
+        for (const target of this.allTargets) target.reset()
+
+        this.score = 0
+        this.onScoreChange(0)
+        this.gameOver = false
+        this.onGameOver(false)
+        // Avoid a large dt spike on the first frame back.
+        this.lastTime = performance.now()
     }
 
     dispose(): void {
@@ -391,44 +419,59 @@ export class Game {
         const dt = Math.min(0.05, (now - this.lastTime) / 1000)
         this.lastTime = now
 
-        if (this.drawing) {
-            this.drawTime = Math.min(this.drawTime + dt, MAX_DRAW_TIME)
-            this.bow.setDraw(this.drawTime / MAX_DRAW_TIME)
-        }
-
-        // Advance moving targets first so arrow hit-tests use this frame's positions.
-        for (const row of this.targetRows) row.update(dt)
-        for (const target of this.allTargets) target.update(dt)
-
-        const consumed: Arrow[] = []
-        for (const arrow of this.arrows) {
-            if (arrow.isStuck) continue
-            arrow.update(dt)
-            if (this.resolveArrowCollisions(arrow) === 'target') {
-                consumed.push(arrow)
+        if (!this.gameOver) {
+            if (this.drawing) {
+                this.drawTime = Math.min(this.drawTime + dt, MAX_DRAW_TIME)
+                this.bow.setDraw(this.drawTime / MAX_DRAW_TIME)
             }
-        }
-        if (consumed.length > 0) {
-            const consumedSet = new Set(consumed)
-            for (const a of consumed) {
-                this.scene.remove(a.object)
-                a.dispose()
-            }
-            this.arrows = this.arrows.filter((a) => !consumedSet.has(a))
-        }
 
-        // Advance hit effects, removing any that have expired this frame.
-        if (this.effects.length > 0) {
-            const survivors: HitEffect[] = []
-            for (const eff of this.effects) {
-                if (eff.update(dt)) {
-                    survivors.push(eff)
-                } else {
-                    this.scene.remove(eff.object)
-                    eff.dispose()
+            // Advance moving targets first so arrow hit-tests use this frame's positions.
+            for (const row of this.targetRows) row.update(dt)
+            for (const target of this.allTargets) target.update(dt)
+
+            const consumed: Arrow[] = []
+            for (const arrow of this.arrows) {
+                if (arrow.isStuck) continue
+                arrow.update(dt)
+                if (this.resolveArrowCollisions(arrow) === 'target') {
+                    consumed.push(arrow)
                 }
             }
-            this.effects = survivors
+            if (consumed.length > 0) {
+                const consumedSet = new Set(consumed)
+                for (const a of consumed) {
+                    this.scene.remove(a.object)
+                    a.dispose()
+                }
+                this.arrows = this.arrows.filter((a) => !consumedSet.has(a))
+            }
+
+            // Advance hit effects, removing any that have expired this frame.
+            if (this.effects.length > 0) {
+                const survivors: HitEffect[] = []
+                for (const eff of this.effects) {
+                    if (eff.update(dt)) {
+                        survivors.push(eff)
+                    } else {
+                        this.scene.remove(eff.object)
+                        eff.dispose()
+                    }
+                }
+                this.effects = survivors
+            }
+
+            if (this.allTargets.every((t) => t.isDisabled)) {
+                this.gameOver = true
+                // Cancel any in-flight draw and free the cursor so the overlay is clickable.
+                this.spaceHeld = false
+                this.drawing = false
+                this.drawTime = 0
+                this.bow.setDraw(0)
+                if (document.pointerLockElement === this.renderer.domElement) {
+                    document.exitPointerLock()
+                }
+                this.onGameOver(true)
+            }
         }
 
         this.renderer.render(this.scene, this.camera)

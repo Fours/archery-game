@@ -161,6 +161,23 @@ export class Target {
         this.hitCount++
     }
 
+    get isDisabled(): boolean {
+        return this.state === 'disabled'
+    }
+
+    /** Restore the target to a fresh idle state for a new round. */
+    reset(): void {
+        this.state = 'idle'
+        this.stateTime = 0
+        this.hitCount = 0
+        this.bullseye.visible = true
+        this.bullseye.scale.setScalar(1)
+        this.bullseye.rotation.y = 0
+        const bright = TIER_COLOR[this.tier]
+        this.ring.material.color.setHex(bright)
+        this.ring.material.emissive.setHex(bright)
+    }
+
     /** Advance the hit→reload→idle state machine. */
     update(dt: number): void {
         if (this.state === 'idle' || this.state === 'disabled') return

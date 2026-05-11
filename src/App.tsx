@@ -7,10 +7,11 @@ function App() {
     const gameRef = useRef<Game | null>(null)
     const [locked, setLocked] = useState(false)
     const [score, setScore] = useState(0)
+    const [gameOver, setGameOver] = useState(false)
 
     useEffect(() => {
         if (!containerRef.current) return
-        const game = new Game(containerRef.current, setLocked, setScore)
+        const game = new Game(containerRef.current, setLocked, setScore, setGameOver)
         gameRef.current = game
         return () => {
             game.dispose()
@@ -22,9 +23,12 @@ function App() {
         <div
             ref={containerRef}
             className="game-root"
-            onClick={() => gameRef.current?.requestLock()}
+            onClick={() => {
+                if (gameOver) return
+                gameRef.current?.requestLock()
+            }}
         >
-            {!locked && (
+            {!locked && !gameOver && (
                 <div className="overlay">
                     <div className="card">
                         <h1>Archery Blitz</h1>
@@ -35,8 +39,26 @@ function App() {
                     </div>
                 </div>
             )}
+            {gameOver && (
+                <div className="overlay">
+                    <div className="card game-over">
+                        <h1>Game Over</h1>
+                        <p className="final-score-label">Final Score</p>
+                        <p className="final-score">{score}</p>
+                        <button
+                            className="new-game"
+                            onClick={(e) => {
+                                e.stopPropagation()
+                                gameRef.current?.restart()
+                            }}
+                        >
+                            New Game
+                        </button>
+                    </div>
+                </div>
+            )}
             <div className="score">Score: {score}</div>
-            <div className="crosshair" />
+            {!gameOver && <div className="crosshair" />}
         </div>
     )
 }
