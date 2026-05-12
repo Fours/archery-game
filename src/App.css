@@ -79,6 +79,12 @@ body,
     backdrop-filter: blur(4px);
 }
 
+.overlay img {
+    width: 100%;
+    max-width: 1000px;
+    border: 20px solid #e8bd4a;
+}
+
 .overlay h1 {
     margin: 0 0 8px;
     font-size: 30px;
@@ -86,13 +92,13 @@ body,
 }
 
 .overlay p {
-    margin: 6px 0;
+    margin: 20px 0;
+    font-size: 30px;
 }
 
 .overlay .hint {
-    font-size: 13px;
-    opacity: 0.8;
-    max-width: 360px;
+    font-size: 16px;
+    opacity: 0.8;    
 }
 
 .overlay .card.game-over {

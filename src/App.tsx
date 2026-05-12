@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import './App.css'
 import { Game } from './game/Game'
+import logo from "./assets/archery-blitz-logo.png"
 
 function App() {
     const containerRef = useRef<HTMLDivElement>(null)
@@ -32,10 +33,10 @@ function App() {
             {!locked && !gameOver && (
                 <div className="overlay">
                     <div className="card">
-                        <h1>Archery Blitz</h1>
+                        <img src={logo} />
                         <p>Click to play</p>
                         <p className="hint">
-                            Mouse to aim · Hold SPACE to draw the bow<br />Release to fire · ESC to free the cursor
+                            Mouse to aim · Hold SPACE to draw the bow · Release to fire · ESC to free the cursor
                         </p>
                     </div>
                 </div>
