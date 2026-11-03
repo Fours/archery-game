@@ -437,6 +437,67 @@ export function createFabricTexture(): THREE.CanvasTexture {
 }
 
 /**
+ * Non-repeating version of the fabric mask for the roof: one canvas covers the
+ * whole `widthM` × `depthM` roof (centered on x = 0, starting at z = `minZ`),
+ * so the blotches never tile. Expects UVs in world meters (setWorldUVs on
+ * geometry positioned in world space), and clamps instead of wrapping.
+ */
+export function createAwningTexture(widthM: number, depthM: number, minZ: number): THREE.CanvasTexture {
+    const pxPerMeter = 96
+    const w = Math.ceil(widthM * pxPerMeter)
+    const h = Math.ceil(depthM * pxPerMeter)
+    const [canvas, ctx] = makeCanvas(w, h)
+
+    ctx.fillStyle = 'rgb(238, 236, 230)'
+    ctx.fillRect(0, 0, w, h)
+
+    // Blotches at several scales so there's no single dominant spot size.
+    const area = widthM * depthM
+    const blotch = (count: number, minR: number, maxR: number) => {
+        for (let i = 0; i < count; i++) {
+            const x = Math.random() * w
+            const y = Math.random() * h
+            const r = (minR + Math.random() * (maxR - minR)) * pxPerMeter
+            const light = Math.random() < 0.5
+            const g = ctx.createRadialGradient(x, y, 0, x, y, r)
+            g.addColorStop(0, light ? 'rgba(255, 255, 255, 0.12)' : 'rgba(120, 100, 90, 0.05)')
+            g.addColorStop(1, 'rgba(0, 0, 0, 0)')
+            ctx.fillStyle = g
+            ctx.fillRect(x - r, y - r, r * 2, r * 2)
+        }
+    }
+    blotch(Math.round(area * 0.6), 0.6, 1.6)
+    blotch(Math.round(area * 4), 0.15, 0.5)
+    blotch(Math.round(area * 12), 0.05, 0.15)
+
+    // Weave: alternating faint threads in both directions.
+    for (let i = 0; i < h; i += 2) {
+        ctx.fillStyle = `rgba(0, 0, 0, ${0.025 + Math.random() * 0.02})`
+        ctx.fillRect(0, i, w, 1)
+    }
+    for (let i = 0; i < w; i += 2) {
+        ctx.fillStyle = `rgba(0, 0, 0, ${0.025 + Math.random() * 0.02})`
+        ctx.fillRect(i, 0, 1, h)
+    }
+
+    const speckles = Math.round(w * h * 0.03)
+    for (let i = 0; i < speckles; i++) {
+        const v = Math.random() < 0.5 ? 0 : 255
+        ctx.fillStyle = `rgba(${v}, ${v}, ${v}, 0.05)`
+        ctx.fillRect(Math.random() * w, Math.random() * h, 1, 1)
+    }
+
+    const tex = new THREE.CanvasTexture(canvas)
+    tex.wrapS = THREE.ClampToEdgeWrapping
+    tex.wrapT = THREE.ClampToEdgeWrapping
+    tex.repeat.set(1 / widthM, 1 / depthM)
+    tex.offset.set(0.5, -minZ / depthM)
+    tex.colorSpace = THREE.SRGBColorSpace
+    tex.anisotropy = ANISOTROPY
+    return tex
+}
+
+/**
  * Painterly lawn: large soft light/dark patches under short directional blade
  * strokes. Fully colored (not a tint mask). `metersPerTile` sets world scale.
  */

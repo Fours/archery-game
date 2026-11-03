@@ -1,6 +1,6 @@
 import * as THREE from 'three'
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js'
-import { createBoardTexture, createFabricTexture, createWoodTexture, setWorldUVs } from './materials'
+import { createAwningTexture, createBoardTexture, createFabricTexture, createWoodTexture, setWorldUVs } from './materials'
 
 // Booth footprint. The player stands at z = 0; the booth opens toward +Z.
 // FRONT_Z is the front facade (counter and front posts), BACK_Z is the back wall.
@@ -59,6 +59,7 @@ export class Booth {
     private woodTex: THREE.Texture
     private boardTex: THREE.Texture
     private fabricTex: THREE.Texture
+    private awningTex: THREE.Texture | null = null
 
     constructor() {
         this.group = new THREE.Group()
@@ -113,7 +114,7 @@ export class Booth {
         this.addPosts(darkWoodMat)
         this.addWalls(woodMat)
         this.addCounter(railMat, darkWoodMat)
-        this.addRoof(redMat, whiteMat)
+        this.addRoof()
         this.addValance(redMat, whiteMat)
         this.addFlagpoles(darkWoodMat)
         this.addAllBunting()
@@ -217,19 +218,30 @@ export class Booth {
         this.group.add(molding)
     }
 
-    private addRoof(redMat: THREE.Material, whiteMat: THREE.Material): void {
+    private addRoof(): void {
         // Red/white candy stripes running front-to-back, aligned with the valance below.
         const sideLen = Math.abs(BACK_Z - FRONT_Z)
         const overhang = 0.25
         const totalWidth = HALF_WIDTH * 2 + overhang
         const totalDepth = sideLen + overhang
+        const centerZ = (FRONT_Z + BACK_Z) / 2
         const stripeWidth = totalWidth / VALANCE_STRIPES
-        const stripeGeo = new THREE.BoxGeometry(stripeWidth, 0.08, totalDepth)
-        setWorldUVs(stripeGeo)
+
+        // One texture spans the whole roof (no tiling), and each stripe gets
+        // its own geometry with UVs taken from its world position, so every
+        // stripe shows a different slice of it.
+        this.awningTex = createAwningTexture(totalWidth, totalDepth, centerZ - totalDepth / 2)
+        const redMat = new THREE.MeshStandardMaterial({ color: RED, map: this.awningTex, roughness: 0.9 })
+        const whiteMat = new THREE.MeshStandardMaterial({ color: WHITE, map: this.awningTex, roughness: 0.9 })
+
         for (let i = 0; i < VALANCE_STRIPES; i++) {
             const x = -totalWidth / 2 + (i + 0.5) * stripeWidth
+            const stripeGeo = new THREE.BoxGeometry(stripeWidth, 0.08, totalDepth)
+            stripeGeo.translate(x, 0, centerZ)
+            setWorldUVs(stripeGeo)
+            stripeGeo.translate(-x, 0, -centerZ)
             const stripe = new THREE.Mesh(stripeGeo, i % 2 === 0 ? redMat : whiteMat)
-            stripe.position.set(x, ROOF_Y, (FRONT_Z + BACK_Z) / 2)
+            stripe.position.set(x, ROOF_Y, centerZ)
             stripe.castShadow = true
             stripe.receiveShadow = true
             this.group.add(stripe)
@@ -411,6 +423,7 @@ export class Booth {
         this.woodTex.dispose()
         this.boardTex.dispose()
         this.fabricTex.dispose()
+        this.awningTex?.dispose()
         this.group.traverse((obj) => {
             const mesh = obj as THREE.Mesh
             if (mesh.geometry && typeof mesh.geometry.dispose === 'function') {
