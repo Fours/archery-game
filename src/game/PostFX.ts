@@ -42,8 +42,10 @@ class ScaledGTAOPass extends GTAOPass {
     // GTAOPass re-renders the scene with a normal-material override to build its
     // depth/normal buffer. It skips points and lines but not sprites, so a
     // HitEffect score sprite becomes a solid quad there and the AO pass darkens
-    // it into a black box. Sprites are already in the color buffer from
-    // RenderPass, so hiding them for this pass only removes them from AO.
+    // it into a black box. Alpha-tested meshes (tree leaf cards) have the same
+    // problem — the override drops their cutout — so they opt out by setting
+    // `userData.skipAO`. Both are already in the color buffer from RenderPass,
+    // so hiding them for this pass only removes them from AO.
     render(
         renderer: THREE.WebGLRenderer,
         writeBuffer: THREE.WebGLRenderTarget,
@@ -52,7 +54,7 @@ class ScaledGTAOPass extends GTAOPass {
         maskActive: boolean,
     ): void {
         this.scene.traverseVisible((obj) => {
-            if ((obj as THREE.Sprite).isSprite) this.hiddenSprites.push(obj)
+            if ((obj as THREE.Sprite).isSprite || obj.userData.skipAO) this.hiddenSprites.push(obj)
         })
         for (const obj of this.hiddenSprites) obj.visible = false
         super.render(renderer, writeBuffer, readBuffer, deltaTime, maskActive)
