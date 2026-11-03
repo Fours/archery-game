@@ -62,8 +62,9 @@ export class Arrow {
     }
 
     private alignTo(direction: THREE.Vector3): void {
-        // The arrow's local -Z is its tip; lookAt orients local -Z toward target.
-        const target = this.object.position.clone().add(direction)
+        // The arrow's local -Z is its tip, but Object3D.lookAt turns a
+        // non-camera object's +Z toward the target — so look *away* from travel.
+        const target = this.object.position.clone().sub(direction)
         this.object.lookAt(target)
     }
 
