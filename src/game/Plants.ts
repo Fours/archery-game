@@ -1,5 +1,5 @@
 import * as THREE from 'three'
-import { BACK_Z, FRONT_Z, HALF_WIDTH } from './Booth'
+import { scatterBoothInterior, scatterField } from './groundScatter'
 
 const LEAF_WIDTH = 0.04
 const LEAF_HEIGHT = 0.12
@@ -8,35 +8,22 @@ const LEAF_TILT = Math.PI / 7
 const LEAF_COLOR = 0x4a7c2a
 
 const INSIDE_COUNT = 30
-const OUTSIDE_COUNT = 80
-const PLAYER_EXCLUSION_RADIUS = 0.8
-
-const OUTSIDE_X_MIN = -9
-const OUTSIDE_X_MAX = 9
-const OUTSIDE_Z_MIN = -1.5
-const OUTSIDE_Z_MAX = 9
-
-type ScatterRegion = {
-    count: number
-    xMin: number
-    xMax: number
-    zMin: number
-    zMax: number
-    exclude?: (x: number, z: number) => boolean
-}
+// Plants per m² near the player; thins with distance (see groundScatter).
+const FIELD_DENSITY = 0.42
 
 /**
  * Decorative ground sprouts. Each plant is two triangle leaves sharing a
- * base at the ground, splayed in opposite directions to form a V. All plants
- * share one geometry and one double-sided material so the GPU footprint is
- * negligible. Scatter regions and counts mirror Flowers so the two layers
- * appear at comparable density.
+ * base at the ground, splayed in opposite directions to form a V. Every leaf
+ * is an instance of one `InstancedMesh`, so the whole field is a single draw
+ * call. Scatter regions and densities mirror Flowers so the two layers appear
+ * at comparable density.
  */
 export class Plants {
     readonly group: THREE.Group
 
     private leafGeo: THREE.BufferGeometry
     private leafMat: THREE.Material
+    private leaves: THREE.InstancedMesh
 
     constructor() {
         this.group = new THREE.Group()
@@ -49,72 +36,49 @@ export class Plants {
              0, LEAF_HEIGHT, 0,
         ])
         this.leafGeo.setAttribute('position', new THREE.BufferAttribute(verts, 3))
-        this.leafGeo.setIndex([0, 1, 2])
-        this.leafGeo.computeVertexNormals()
+        // Both windings, with every normal pointing straight up: the leaves
+        // shade like the grass they grow from instead of going black whenever
+        // a face turns away from the sun (which DoubleSide's flipped normals do).
+        this.leafGeo.setIndex([0, 1, 2, 0, 2, 1])
+        this.leafGeo.setAttribute(
+            'normal',
+            new THREE.BufferAttribute(new Float32Array([0, 1, 0, 0, 1, 0, 0, 1, 0]), 3),
+        )
 
         this.leafMat = new THREE.MeshStandardMaterial({
             color: LEAF_COLOR,
             roughness: 0.9,
-            side: THREE.DoubleSide,
         })
 
-        this.scatter({
-            count: INSIDE_COUNT,
-            xMin: -HALF_WIDTH + 0.3,
-            xMax: HALF_WIDTH - 0.3,
-            zMin: BACK_Z + 0.3,
-            zMax: FRONT_Z - 0.1,
+        const points = [...scatterBoothInterior(INSIDE_COUNT), ...scatterField(FIELD_DENSITY)]
+        const leaves = new THREE.InstancedMesh(this.leafGeo, this.leafMat, points.length * 2)
+        const plant = new THREE.Matrix4()
+        const leaf = new THREE.Matrix4()
+        const pos = new THREE.Vector3()
+        const quat = new THREE.Quaternion()
+        const euler = new THREE.Euler()
+        const scale = new THREE.Vector3()
+        points.forEach((p, i) => {
+            pos.set(p.x, 0, p.z)
+            quat.setFromEuler(euler.set(0, Math.random() * Math.PI * 2, 0))
+            scale.setScalar((1.4 + Math.random() * 1.2) * p.distanceScale)
+            plant.compose(pos, quat, scale)
+
+            // Two triangles splayed in opposite directions, with slight per-plant
+            // tilt variation so they don't all look stamped from the same mold.
+            leaf.makeRotationZ(LEAF_TILT * (0.7 + Math.random() * 0.6))
+            leaves.setMatrixAt(i * 2, leaf.premultiply(plant))
+            leaf.makeRotationZ(-LEAF_TILT * (0.7 + Math.random() * 0.6))
+            leaves.setMatrixAt(i * 2 + 1, leaf.premultiply(plant))
         })
-
-        this.scatter({
-            count: OUTSIDE_COUNT,
-            xMin: OUTSIDE_X_MIN,
-            xMax: OUTSIDE_X_MAX,
-            zMin: OUTSIDE_Z_MIN,
-            zMax: OUTSIDE_Z_MAX,
-            exclude: (x, z) =>
-                x * x + z * z < PLAYER_EXCLUSION_RADIUS * PLAYER_EXCLUSION_RADIUS,
-        })
-    }
-
-    private scatter(region: ScatterRegion): void {
-        const maxTries = region.count * 10
-        let placed = 0
-        let tries = 0
-        while (placed < region.count && tries < maxTries) {
-            tries++
-            const x = THREE.MathUtils.lerp(region.xMin, region.xMax, Math.random())
-            const z = THREE.MathUtils.lerp(region.zMin, region.zMax, Math.random())
-            if (region.exclude?.(x, z)) continue
-            this.group.add(this.makePlant(x, z))
-            placed++
-        }
-    }
-
-    private makePlant(x: number, z: number): THREE.Group {
-        const plant = new THREE.Group()
-        plant.position.set(x, 0, z)
-        plant.rotation.y = Math.random() * Math.PI * 2
-        plant.scale.setScalar(1.4 + Math.random() * 1.2)
-
-        // Two triangles splayed in opposite directions, with slight per-plant
-        // tilt variation so they don't all look stamped from the same mold.
-        const tiltA = LEAF_TILT * (0.7 + Math.random() * 0.6)
-        const tiltB = LEAF_TILT * (0.7 + Math.random() * 0.6)
-
-        const leafA = new THREE.Mesh(this.leafGeo, this.leafMat)
-        leafA.rotation.z = tiltA
-        plant.add(leafA)
-
-        const leafB = new THREE.Mesh(this.leafGeo, this.leafMat)
-        leafB.rotation.z = -tiltB
-        plant.add(leafB)
-
-        return plant
+        leaves.computeBoundingSphere()
+        this.leaves = leaves
+        this.group.add(leaves)
     }
 
     dispose(): void {
         this.leafGeo.dispose()
         this.leafMat.dispose()
+        this.leaves.dispose()
     }
 }
