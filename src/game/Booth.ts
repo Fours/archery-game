@@ -1,6 +1,6 @@
 import * as THREE from 'three'
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js'
-import { createFabricTexture, createWoodTexture, setWorldUVs } from './materials'
+import { createBoardTexture, createFabricTexture, createWoodTexture, setWorldUVs } from './materials'
 
 // Booth footprint. The player stands at z = 0; the booth opens toward +Z.
 // FRONT_Z is the front facade (counter and front posts), BACK_Z is the back wall.
@@ -14,15 +14,20 @@ const WALL_THICK = 0.06
 const WALL_HEIGHT = ROOF_Y - 0.05
 
 const COUNTER_TOP_Y = 0.95
+// Upper face of the rail. Kept where the original 7 cm slab put it so the
+// bow/counter clearance invariant (see CLAUDE.md) is unchanged.
+const COUNTER_SURFACE_Y = COUNTER_TOP_Y + 0.035
 const COUNTER_DEPTH = 0.55
-const COUNTER_TOP_THICK = 0.07
-// Counter top overhangs the front panel toward the player so its rounded
-// front edge reads as a chunky bar top.
-const COUNTER_LIP = 0.05
+const COUNTER_TOP_THICK = 0.1
+// Counter top overhangs the front panel toward the player (flush with the
+// front posts) so its rounded front edge reads as a chunky bar top.
+const COUNTER_LIP = 0.1
+// Cove molding tucked under the lip, against the front panel.
+const COUNTER_MOLDING = 0.035
 
 // Bevel radii: no edge in a cartoon world should be razor sharp.
 const POST_BEVEL = 0.035
-const COUNTER_BEVEL = 0.025
+const COUNTER_BEVEL = 0.04
 const VALANCE_THICK = 0.03
 const VALANCE_BEVEL = 0.008
 const ROPE_RADIUS = 0.008
@@ -39,6 +44,8 @@ const BLUE = 0x2b4f8c
 const YELLOW = 0xf0d447
 const WOOD = 0x8f5c34
 const DARK_WOOD = 0x5c3a1f
+// Varnished hardwood for the counter rail: warmer and richer than the walls.
+const RAIL_WOOD = 0xa86a3c
 
 const BUNTING_COLORS = [RED, WHITE, BLUE, YELLOW]
 
@@ -50,6 +57,7 @@ const BUNTING_COLORS = [RED, WHITE, BLUE, YELLOW]
 export class Booth {
     readonly group: THREE.Group
     private woodTex: THREE.Texture
+    private boardTex: THREE.Texture
     private fabricTex: THREE.Texture
 
     constructor() {
@@ -58,6 +66,7 @@ export class Booth {
         // Both textures are near-white tint masks shared by the light/dark
         // variants; box geometries get world-meter UVs so density stays uniform.
         this.woodTex = createWoodTexture()
+        this.boardTex = createBoardTexture()
         this.fabricTex = createFabricTexture()
 
         const woodMat = new THREE.MeshStandardMaterial({
@@ -69,6 +78,15 @@ export class Booth {
             color: DARK_WOOD,
             map: this.woodTex,
             roughness: 0.85,
+        })
+        // One solid board with a light clearcoat, so the sun and bulbs leave a
+        // soft varnish sheen along the rail.
+        const railMat = new THREE.MeshPhysicalMaterial({
+            color: RAIL_WOOD,
+            map: this.boardTex,
+            roughness: 0.65,
+            clearcoat: 0.25,
+            clearcoatRoughness: 0.55,
         })
         const redMat = new THREE.MeshStandardMaterial({
             color: RED,
@@ -94,7 +112,7 @@ export class Booth {
 
         this.addPosts(darkWoodMat)
         this.addWalls(woodMat)
-        this.addCounter(woodMat, darkWoodMat)
+        this.addCounter(railMat, darkWoodMat)
         this.addRoof(redMat, whiteMat)
         this.addValance(redMat, whiteMat)
         this.addFlagpoles(darkWoodMat)
@@ -140,30 +158,63 @@ export class Booth {
         this.group.add(back)
     }
 
-    private addCounter(woodMat: THREE.Material, darkMat: THREE.Material): void {
+    private addCounter(railMat: THREE.Material, darkMat: THREE.Material): void {
         const innerWidth = HALF_WIDTH * 2 - POST_THICK
 
+        // A single thick board spanning post to post. setWorldUVs maps U to X
+        // on its top and front faces, so the board texture's grain runs left/right.
         const topDepth = COUNTER_DEPTH + COUNTER_LIP
         const topGeo = new RoundedBoxGeometry(
             innerWidth,
             COUNTER_TOP_THICK,
             topDepth,
-            3,
+            4,
             COUNTER_BEVEL,
         )
         setWorldUVs(topGeo)
-        const top = new THREE.Mesh(topGeo, woodMat)
-        top.position.set(0, COUNTER_TOP_Y, FRONT_Z + COUNTER_LIP - topDepth / 2)
+        const top = new THREE.Mesh(topGeo, railMat)
+        top.position.set(
+            0,
+            COUNTER_SURFACE_Y - COUNTER_TOP_THICK / 2,
+            FRONT_Z + COUNTER_LIP - topDepth / 2,
+        )
         top.castShadow = true
         top.receiveShadow = true
         this.group.add(top)
 
-        const frontGeo = new THREE.BoxGeometry(innerWidth, COUNTER_TOP_Y, 0.05)
+        const panelThick = 0.05
+        const frontGeo = new THREE.BoxGeometry(innerWidth, COUNTER_TOP_Y, panelThick)
         setWorldUVs(frontGeo)
         const front = new THREE.Mesh(frontGeo, darkMat)
-        front.position.set(0, COUNTER_TOP_Y / 2, FRONT_Z + 0.025)
+        front.position.set(0, COUNTER_TOP_Y / 2, FRONT_Z + panelThick / 2)
         front.receiveShadow = true
         this.group.add(front)
+
+        // Quarter-round molding in the corner under the lip, softening the step
+        // from rail to panel. Profile is in (z, y) with the corner at (0, M).
+        const moldingShape = new THREE.Shape()
+        moldingShape.moveTo(0, 0)
+        moldingShape.lineTo(0, COUNTER_MOLDING)
+        moldingShape.lineTo(COUNTER_MOLDING, COUNTER_MOLDING)
+        moldingShape.absarc(0, COUNTER_MOLDING, COUNTER_MOLDING, 0, -Math.PI / 2, true)
+        const moldingGeo = new THREE.ExtrudeGeometry(moldingShape, {
+            depth: innerWidth,
+            bevelEnabled: false,
+            curveSegments: 8,
+        })
+        // Extrusion runs along +Z; turn it to run along X (profile x → world +Z,
+        // toward the player), then center it.
+        moldingGeo.rotateY(-Math.PI / 2)
+        moldingGeo.translate(innerWidth / 2, 0, 0)
+        setWorldUVs(moldingGeo)
+        const molding = new THREE.Mesh(moldingGeo, darkMat)
+        molding.position.set(
+            0,
+            COUNTER_SURFACE_Y - COUNTER_TOP_THICK - COUNTER_MOLDING,
+            FRONT_Z + panelThick,
+        )
+        molding.receiveShadow = true
+        this.group.add(molding)
     }
 
     private addRoof(redMat: THREE.Material, whiteMat: THREE.Material): void {
@@ -358,6 +409,7 @@ export class Booth {
     dispose(): void {
         // Material.dispose() doesn't free maps, so release the shared textures here.
         this.woodTex.dispose()
+        this.boardTex.dispose()
         this.fabricTex.dispose()
         this.group.traverse((obj) => {
             const mesh = obj as THREE.Mesh

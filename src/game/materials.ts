@@ -167,6 +167,88 @@ export function createWoodTexture(): THREE.CanvasTexture {
 }
 
 /**
+ * Near-white solid hardwood board with grain running along U (no plank seams),
+ * for a single long counter-top rail. Wavy grain lines plus a few "cathedral"
+ * arches of flat-sawn figure; tinted by material `color`. Every wave uses an
+ * integer number of periods across the tile so it wraps seamlessly. One tile =
+ * 1 m; pair with setWorldUVs so the grain follows X on top and front faces.
+ */
+export function createBoardTexture(): THREE.CanvasTexture {
+    const size = 512
+    const [canvas, ctx] = makeCanvas(size)
+    const tau = Math.PI * 2
+
+    ctx.fillStyle = 'rgb(232, 222, 210)'
+    ctx.fillRect(0, 0, size, size)
+
+    // Broad soft color bands give the board depth before the fine grain.
+    for (let i = 0; i < 10; i++) {
+        const y = Math.random() * size
+        const h = 20 + Math.random() * 60
+        const g = ctx.createLinearGradient(0, y - h, 0, y + h)
+        const a = 0.08 + Math.random() * 0.12
+        const tone = Math.random() < 0.5 ? `rgba(120, 80, 45, ${a})` : `rgba(255, 248, 235, ${a})`
+        g.addColorStop(0, 'rgba(0, 0, 0, 0)')
+        g.addColorStop(0.5, tone)
+        g.addColorStop(1, 'rgba(0, 0, 0, 0)')
+        ctx.fillStyle = g
+        for (const dy of [-size, 0, size]) ctx.fillRect(0, y - h + dy, size, h * 2)
+    }
+
+    const strokeWave = (y0: number, amp: number, k: number, phase: number): void => {
+        for (const dy of [-size, 0, size]) {
+            ctx.beginPath()
+            for (let x = 0; x <= size; x += 4) {
+                const y = y0 + dy + Math.sin((x / size) * tau * k + phase) * amp
+                if (x === 0) ctx.moveTo(x, y)
+                else ctx.lineTo(x, y)
+            }
+            ctx.stroke()
+        }
+    }
+
+    // Fine straight grain.
+    for (let i = 0; i < 140; i++) {
+        ctx.strokeStyle = `rgba(80, 48, 22, ${0.08 + Math.random() * 0.2})`
+        ctx.lineWidth = 0.8 + Math.random() * 2.2
+        strokeWave(Math.random() * size, 1 + Math.random() * 4, 1 + Math.floor(Math.random() * 3), Math.random() * tau)
+    }
+
+    // Cathedral figure: nested arches pointing along +U, the signature look of
+    // a flat-sawn plank. Drawn twice, offset by a full tile, to wrap in U.
+    for (let c = 0; c < 2; c++) {
+        const cx = Math.random() * size
+        const cy = size * (0.25 + c * 0.5) + (Math.random() - 0.5) * 60
+        for (let r = 0; r < 7; r++) {
+            const halfH = 10 + r * 9
+            const len = 70 + r * 26
+            ctx.strokeStyle = `rgba(85, 50, 22, ${0.3 - r * 0.025})`
+            ctx.lineWidth = 2 + Math.random() * 1.5
+            for (const dx of [-size, 0, size]) {
+                ctx.beginPath()
+                for (let t = -1; t <= 1.0001; t += 0.05) {
+                    // Parabolic arch: apex at (cx + len, cy), legs trailing back.
+                    const x = cx + dx + len * (1 - t * t)
+                    const y = cy + t * halfH
+                    if (t === -1) ctx.moveTo(x - 160, y)
+                    ctx.lineTo(x, y)
+                }
+                ctx.lineTo(cx + dx - 160, cy + halfH)
+                ctx.stroke()
+            }
+        }
+    }
+
+    // Pores: tiny dark dashes along the grain.
+    for (let i = 0; i < 1800; i++) {
+        ctx.fillStyle = `rgba(60, 35, 15, ${0.08 + Math.random() * 0.12})`
+        ctx.fillRect(Math.random() * size, Math.random() * size, 2 + Math.random() * 5, 1)
+    }
+
+    return finishTexture(canvas, 1.0)
+}
+
+/**
  * Near-white woven canvas for the striped awning: fine weave, speckle, and
  * soft painterly blotches. Tinted by material color; one tile = 0.6 m.
  */
