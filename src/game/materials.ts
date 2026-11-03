@@ -65,10 +65,10 @@ export function setWorldUVs(geo: THREE.BufferGeometry): void {
     uv.needsUpdate = true
 }
 
-function makeCanvas(size: number): [HTMLCanvasElement, CanvasRenderingContext2D] {
+function makeCanvas(size: number, height = size): [HTMLCanvasElement, CanvasRenderingContext2D] {
     const canvas = document.createElement('canvas')
     canvas.width = size
-    canvas.height = size
+    canvas.height = height
     const ctx = canvas.getContext('2d')
     if (!ctx) throw new Error('2D canvas context unavailable')
     return [canvas, ctx]
@@ -109,52 +109,63 @@ function softBlotch(
 
 /**
  * Near-white painted wood planks running along V, meant to be tinted by the
- * material's `color`. One tile is 1 m wide holding four 25 cm planks; pair
- * with setWorldUVs.
+ * material's `color`. One tile is 2 m wide by 4 m tall, holding eight 25 cm
+ * plank columns; each column is a run of boards of random length (butt joints
+ * staggered column to column), and every board gets its own tone, grain and
+ * knots, so the tiling repeat is hard to spot. Pair with setWorldUVs.
  */
 export function createWoodTexture(): THREE.CanvasTexture {
-    const size = 512
-    const planks = 4
-    const pw = size / planks
-    const [canvas, ctx] = makeCanvas(size)
+    // Taller than wide so boards can run long; same 512 px/m both ways.
+    const tileWidthM = 2
+    const tileHeightM = 4
+    const pxPerMeter = 512
+    const width = tileWidthM * pxPerMeter
+    const size = tileHeightM * pxPerMeter
+    const planks = 8
+    const pw = width / planks
+    const [canvas, ctx] = makeCanvas(width, size)
 
     for (let p = 0; p < planks; p++) {
         const x0 = p * pw
-        const b = 205 + Math.random() * 45
-        ctx.fillStyle = `rgb(${b}, ${b * 0.96}, ${b * 0.92})`
-        ctx.fillRect(x0, 0, pw, size)
 
-        // Grain: long wobbly streaks, slightly darker than the plank.
-        for (let s = 0; s < 22; s++) {
-            const gx = x0 + 6 + Math.random() * (pw - 12)
-            const amp = 1 + Math.random() * 3
-            const freq = 0.01 + Math.random() * 0.02
-            const phase = Math.random() * Math.PI * 2
-            ctx.strokeStyle = `rgba(70, 45, 25, ${0.06 + Math.random() * 0.12})`
-            ctx.lineWidth = 1 + Math.random() * 2.5
-            ctx.beginPath()
-            for (let y = 0; y <= size; y += 8) {
-                const x = gx + Math.sin(y * freq + phase) * amp
-                if (y === 0) ctx.moveTo(x, y)
-                else ctx.lineTo(x, y)
-            }
-            ctx.stroke()
+        // Board boundaries down the column, measured from a random start; the
+        // last board runs to start + size, i.e. wraps into the first.
+        const start = Math.random() * size
+        const joints: number[] = []
+        let y = 0
+        while (y < size) {
+            joints.push(y)
+            y += pxPerMeter * (1.5 + Math.random() * 2)
         }
+        // Drop a final sliver too short to read as a board.
+        if (size - joints[joints.length - 1] < pxPerMeter * 0.8 && joints.length > 1) joints.pop()
 
-        // Occasional knot.
-        if (Math.random() < 0.25) {
-            const kx = x0 + pw * (0.3 + Math.random() * 0.4)
-            const ky = Math.random() * size
-            ctx.fillStyle = 'rgba(70, 40, 20, 0.22)'
-            ctx.beginPath()
-            ctx.ellipse(kx, ky, 5 + Math.random() * 4, 9 + Math.random() * 6, 0, 0, Math.PI * 2)
-            ctx.fill()
+        // Paint the column once on its own strip, then blit it in at `start`
+        // and wrapped one tile up. Painting the wrapped board twice would roll
+        // two different random tones and leave a fake joint at the tile edge.
+        const [col, colCtx] = makeCanvas(pw, size)
+        for (let j = 0; j < joints.length; j++) {
+            const y0 = joints[j]
+            const y1 = j + 1 < joints.length ? joints[j + 1] : size
+            colCtx.save()
+            colCtx.beginPath()
+            colCtx.rect(0, y0, pw, y1 - y0)
+            colCtx.clip()
+            drawPlankBoard(colCtx, 0, y0, pw, y1 - y0)
+            colCtx.restore()
+
+            // Butt joint: a dark gap with a faint highlighted edge.
+            colCtx.fillStyle = 'rgba(40, 25, 12, 0.6)'
+            colCtx.fillRect(0, y0 - 1.5, pw, 3)
+            colCtx.fillStyle = 'rgba(255, 245, 225, 0.2)'
+            colCtx.fillRect(0, y0 + 1.5, pw, 1)
         }
-
-        // Butt joint where two boards meet end to end.
-        const jy = Math.random() * size
-        ctx.fillStyle = 'rgba(40, 25, 12, 0.55)'
-        ctx.fillRect(x0, jy, pw, 3)
+        // The first joint sits at the strip's top edge; repeat its dark gap
+        // at the bottom so both halves of it survive the wrap.
+        colCtx.fillStyle = 'rgba(40, 25, 12, 0.6)'
+        colCtx.fillRect(0, size - 1.5, pw, 1.5)
+        ctx.drawImage(col, x0, start)
+        ctx.drawImage(col, x0, start - size)
 
         // Seam between planks: dark groove with a light bevel catching light.
         ctx.fillStyle = 'rgba(35, 20, 8, 0.75)'
@@ -163,7 +174,71 @@ export function createWoodTexture(): THREE.CanvasTexture {
         ctx.fillRect(x0 + 4, 0, 2, size)
     }
 
-    return finishTexture(canvas, 1.0)
+    const tex = finishTexture(canvas, tileWidthM)
+    tex.repeat.set(1 / tileWidthM, 1 / tileHeightM)
+    return tex
+}
+
+/** One board of a plank column: base tone, end-to-end shading, grain, knots. */
+function drawPlankBoard(
+    ctx: CanvasRenderingContext2D,
+    x0: number,
+    y0: number,
+    w: number,
+    h: number,
+): void {
+    // Per-board brightness and warmth, so neighbouring boards read as
+    // different pieces of wood rather than one stripe.
+    const b = 190 + Math.random() * 60
+    const warm = 0.88 + Math.random() * 0.1
+    ctx.fillStyle = `rgb(${b}, ${b * (warm + 0.06)}, ${b * warm})`
+    ctx.fillRect(x0, y0, w, h)
+
+    // Gentle shading along the board's length (weathering / sap streaks).
+    const g = ctx.createLinearGradient(0, y0, 0, y0 + h)
+    const a1 = Math.random() * 0.12
+    const a2 = Math.random() * 0.12
+    g.addColorStop(0, `rgba(90, 55, 25, ${a1})`)
+    g.addColorStop(0.5, 'rgba(0, 0, 0, 0)')
+    g.addColorStop(1, `rgba(90, 55, 25, ${a2})`)
+    ctx.fillStyle = g
+    ctx.fillRect(x0, y0, w, h)
+
+    // Grain: long wobbly streaks; count and waviness vary per board.
+    const streaks = 14 + Math.floor(Math.random() * 16)
+    const wobble = 0.5 + Math.random() * 1.5
+    for (let s = 0; s < streaks; s++) {
+        const gx = x0 + 6 + Math.random() * (w - 12)
+        const amp = (1 + Math.random() * 3) * wobble
+        const freq = 0.006 + Math.random() * 0.02
+        const phase = Math.random() * Math.PI * 2
+        ctx.strokeStyle = `rgba(70, 45, 25, ${0.05 + Math.random() * 0.14})`
+        ctx.lineWidth = 1 + Math.random() * 2.5
+        ctx.beginPath()
+        for (let y = 0; y <= h; y += 8) {
+            const x = gx + Math.sin((y0 + y) * freq + phase) * amp
+            if (y === 0) ctx.moveTo(x, y0 + y)
+            else ctx.lineTo(x, y0 + y)
+        }
+        ctx.stroke()
+    }
+
+    // Knots: some boards are clear, some have one or two.
+    const knots = Math.random() < 0.45 ? 0 : Math.random() < 0.7 ? 1 : 2
+    for (let k = 0; k < knots; k++) {
+        const kx = x0 + w * (0.25 + Math.random() * 0.5)
+        const ky = y0 + Math.random() * h
+        const rx = 4 + Math.random() * 5
+        const ry = 8 + Math.random() * 8
+        ctx.fillStyle = 'rgba(70, 40, 20, 0.25)'
+        ctx.beginPath()
+        ctx.ellipse(kx, ky, rx, ry, 0, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.fillStyle = 'rgba(50, 28, 12, 0.3)'
+        ctx.beginPath()
+        ctx.ellipse(kx, ky, rx * 0.4, ry * 0.4, 0, 0, Math.PI * 2)
+        ctx.fill()
+    }
 }
 
 /**
