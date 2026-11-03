@@ -3,7 +3,7 @@ import { Barrels } from './Barrels'
 import { Booth } from './Booth'
 import { CornerBows } from './CornerBows'
 import { Flowers } from './Flowers'
-import { createGrassTexture, setPlaneWorldUVs } from './materials'
+import { createGrassTexture, setWorldUVs } from './materials'
 import { FrontRailing } from './FrontRailing'
 import { Plants } from './Plants'
 import { Sky, SKY_HORIZON } from './Sky'
@@ -75,7 +75,7 @@ export class World {
 
         this.grassTexture = createGrassTexture(GRASS_TILE_METERS)
         const groundGeo = new THREE.PlaneGeometry(GROUND_SIZE, GROUND_SIZE)
-        setPlaneWorldUVs(groundGeo)
+        setWorldUVs(groundGeo)
         this.ground = new THREE.Mesh(
             groundGeo,
             new THREE.MeshStandardMaterial({ map: this.grassTexture, roughness: 1 }),

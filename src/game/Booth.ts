@@ -1,5 +1,6 @@
 import * as THREE from 'three'
-import { createFabricTexture, createWoodTexture, setBoxWorldUVs } from './materials'
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js'
+import { createFabricTexture, createWoodTexture, setWorldUVs } from './materials'
 
 // Booth footprint. The player stands at z = 0; the booth opens toward +Z.
 // FRONT_Z is the front facade (counter and front posts), BACK_Z is the back wall.
@@ -15,6 +16,17 @@ const WALL_HEIGHT = ROOF_Y - 0.05
 const COUNTER_TOP_Y = 0.95
 const COUNTER_DEPTH = 0.55
 const COUNTER_TOP_THICK = 0.07
+// Counter top overhangs the front panel toward the player so its rounded
+// front edge reads as a chunky bar top.
+const COUNTER_LIP = 0.05
+
+// Bevel radii: no edge in a cartoon world should be razor sharp.
+const POST_BEVEL = 0.035
+const COUNTER_BEVEL = 0.025
+const VALANCE_THICK = 0.03
+const VALANCE_BEVEL = 0.008
+const ROPE_RADIUS = 0.008
+const ROPE_COLOR = 0x4a3826
 
 const VALANCE_HEIGHT = 0.75
 const VALANCE_STRIPES = 24
@@ -92,8 +104,8 @@ export class Booth {
     }
 
     private addPosts(mat: THREE.Material): void {
-        const geo = new THREE.BoxGeometry(POST_THICK, ROOF_Y, POST_THICK)
-        setBoxWorldUVs(geo)
+        const geo = new RoundedBoxGeometry(POST_THICK, ROOF_Y, POST_THICK, 3, POST_BEVEL)
+        setWorldUVs(geo)
         const corners: [number, number][] = [
             [-HALF_WIDTH, FRONT_Z],
             [HALF_WIDTH, FRONT_Z],
@@ -112,7 +124,7 @@ export class Booth {
     private addWalls(mat: THREE.Material): void {
         const sideLen = Math.abs(BACK_Z - FRONT_Z) - POST_THICK
         const sideGeo = new THREE.BoxGeometry(WALL_THICK, WALL_HEIGHT, sideLen)
-        setBoxWorldUVs(sideGeo)
+        setWorldUVs(sideGeo)
         for (const x of [-HALF_WIDTH, HALF_WIDTH]) {
             const wall = new THREE.Mesh(sideGeo, mat)
             wall.position.set(x, WALL_HEIGHT / 2, (FRONT_Z + BACK_Z) / 2)
@@ -121,7 +133,7 @@ export class Booth {
             this.group.add(wall)
         }
         const backGeo = new THREE.BoxGeometry(HALF_WIDTH * 2 - POST_THICK, WALL_HEIGHT, WALL_THICK)
-        setBoxWorldUVs(backGeo)
+        setWorldUVs(backGeo)
         const back = new THREE.Mesh(backGeo, mat)
         back.position.set(0, WALL_HEIGHT / 2, BACK_Z)
         back.receiveShadow = true
@@ -131,16 +143,23 @@ export class Booth {
     private addCounter(woodMat: THREE.Material, darkMat: THREE.Material): void {
         const innerWidth = HALF_WIDTH * 2 - POST_THICK
 
-        const topGeo = new THREE.BoxGeometry(innerWidth, COUNTER_TOP_THICK, COUNTER_DEPTH)
-        setBoxWorldUVs(topGeo)
+        const topDepth = COUNTER_DEPTH + COUNTER_LIP
+        const topGeo = new RoundedBoxGeometry(
+            innerWidth,
+            COUNTER_TOP_THICK,
+            topDepth,
+            3,
+            COUNTER_BEVEL,
+        )
+        setWorldUVs(topGeo)
         const top = new THREE.Mesh(topGeo, woodMat)
-        top.position.set(0, COUNTER_TOP_Y, FRONT_Z - COUNTER_DEPTH / 2)
+        top.position.set(0, COUNTER_TOP_Y, FRONT_Z + COUNTER_LIP - topDepth / 2)
         top.castShadow = true
         top.receiveShadow = true
         this.group.add(top)
 
         const frontGeo = new THREE.BoxGeometry(innerWidth, COUNTER_TOP_Y, 0.05)
-        setBoxWorldUVs(frontGeo)
+        setWorldUVs(frontGeo)
         const front = new THREE.Mesh(frontGeo, darkMat)
         front.position.set(0, COUNTER_TOP_Y / 2, FRONT_Z + 0.025)
         front.receiveShadow = true
@@ -155,7 +174,7 @@ export class Booth {
         const totalDepth = sideLen + overhang
         const stripeWidth = totalWidth / VALANCE_STRIPES
         const stripeGeo = new THREE.BoxGeometry(stripeWidth, 0.08, totalDepth)
-        setBoxWorldUVs(stripeGeo)
+        setWorldUVs(stripeGeo)
         for (let i = 0; i < VALANCE_STRIPES; i++) {
             const x = -totalWidth / 2 + (i + 0.5) * stripeWidth
             const stripe = new THREE.Mesh(stripeGeo, i % 2 === 0 ? redMat : whiteMat)
@@ -167,16 +186,32 @@ export class Booth {
     }
 
     private addValance(redMat: THREE.Material, whiteMat: THREE.Material): void {
-        // Vertical red/white candy stripes hanging from the front roof edge.
+        // Vertical red/white candy stripes hanging from the front roof edge, each
+        // ending in a half-round scallop. Shape origin is the stripe's top center.
         const overhang = 0.25
         const totalWidth = HALF_WIDTH * 2 + overhang
         const stripeWidth = totalWidth / VALANCE_STRIPES
-        const stripeGeo = new THREE.BoxGeometry(stripeWidth, VALANCE_HEIGHT, 0.04)
-        setBoxWorldUVs(stripeGeo)
+        const r = stripeWidth / 2
+        const shape = new THREE.Shape()
+        shape.moveTo(-r, 0)
+        shape.lineTo(r, 0)
+        shape.lineTo(r, -(VALANCE_HEIGHT - r))
+        shape.absarc(0, -(VALANCE_HEIGHT - r), r, 0, Math.PI, true)
+        shape.closePath()
+        const stripeGeo = new THREE.ExtrudeGeometry(shape, {
+            depth: VALANCE_THICK,
+            bevelEnabled: true,
+            bevelThickness: VALANCE_BEVEL,
+            bevelSize: VALANCE_BEVEL,
+            bevelSegments: 2,
+            curveSegments: 12,
+        })
+        stripeGeo.translate(0, 0, -VALANCE_THICK / 2)
+        setWorldUVs(stripeGeo)
         for (let i = 0; i < VALANCE_STRIPES; i++) {
             const x = -totalWidth / 2 + (i + 0.5) * stripeWidth
             const stripe = new THREE.Mesh(stripeGeo, i % 2 === 0 ? redMat : whiteMat)
-            stripe.position.set(x, ROOF_Y - VALANCE_HEIGHT / 2 - 0.04, FRONT_Z + 0.04)
+            stripe.position.set(x, ROOF_Y - 0.04, FRONT_Z + 0.04)
             stripe.castShadow = true
             this.group.add(stripe)
         }
@@ -376,12 +411,20 @@ function addBunting(
         points.push(p)
     }
 
-    const lineGeo = new THREE.BufferGeometry().setFromPoints(points)
-    const line = new THREE.Line(
-        lineGeo,
-        new THREE.LineBasicMaterial({ color: 0x222222 }),
+    // Twine rope: a thin tube through the flag points rather than a 1 px Line,
+    // so it has real thickness, catches light, and shows up in AO.
+    const ropeGeo = new THREE.TubeGeometry(
+        new THREE.CatmullRomCurve3(points),
+        segs * 6,
+        ROPE_RADIUS,
+        5,
+        false,
     )
-    parent.add(line)
+    const rope = new THREE.Mesh(
+        ropeGeo,
+        new THREE.MeshStandardMaterial({ color: ROPE_COLOR, roughness: 0.95 }),
+    )
+    parent.add(rope)
 
     // Orient each flag so its plane faces perpendicular to the string's XZ direction.
     const span = b.clone().sub(a)

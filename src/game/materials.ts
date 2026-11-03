@@ -38,37 +38,29 @@ export function addRimLight<T extends THREE.MeshStandardMaterial>(
 }
 
 /**
- * Rewrite a BoxGeometry's UVs so one UV unit equals one world meter on every
- * face. Lets a single tiling texture keep a constant texel density across
- * boxes of very different sizes (a 14 m wall and a 0.2 m post share the same
- * plank width). Face order matches BoxGeometry: +x, −x, +y, −y, +z, −z.
+ * Rewrite a geometry's UVs as a box projection in its local space, one UV unit
+ * per meter. Each vertex projects along the axis its normal points down most:
+ * ±X faces map (z, y), ±Y faces map (x, z), ±Z faces map (x, y). Lets a single
+ * tiling texture keep a constant texel density across meshes of very different
+ * sizes (a 14 m wall and a 0.2 m post share the same plank width), and works
+ * for any shape — boxes, rounded boxes, extrusions, planes. Assumes the mesh
+ * itself is unscaled; otherwise density scales with it.
  */
-export function setBoxWorldUVs(geo: THREE.BoxGeometry): void {
-    const { width, height, depth, widthSegments, heightSegments, depthSegments } = geo.parameters
-    const faces: { count: number; u: number; v: number }[] = [
-        { count: (depthSegments + 1) * (heightSegments + 1), u: depth, v: height },
-        { count: (depthSegments + 1) * (heightSegments + 1), u: depth, v: height },
-        { count: (widthSegments + 1) * (depthSegments + 1), u: width, v: depth },
-        { count: (widthSegments + 1) * (depthSegments + 1), u: width, v: depth },
-        { count: (widthSegments + 1) * (heightSegments + 1), u: width, v: height },
-        { count: (widthSegments + 1) * (heightSegments + 1), u: width, v: height },
-    ]
+export function setWorldUVs(geo: THREE.BufferGeometry): void {
+    const pos = geo.attributes.position as THREE.BufferAttribute
+    const normal = geo.attributes.normal as THREE.BufferAttribute
     const uv = geo.attributes.uv as THREE.BufferAttribute
-    let i = 0
-    for (const face of faces) {
-        for (let k = 0; k < face.count; k++, i++) {
-            uv.setXY(i, uv.getX(i) * face.u, uv.getY(i) * face.v)
+    for (let i = 0; i < pos.count; i++) {
+        const ax = Math.abs(normal.getX(i))
+        const ay = Math.abs(normal.getY(i))
+        const az = Math.abs(normal.getZ(i))
+        if (ax >= ay && ax >= az) {
+            uv.setXY(i, pos.getZ(i), pos.getY(i))
+        } else if (ay >= az) {
+            uv.setXY(i, pos.getX(i), pos.getZ(i))
+        } else {
+            uv.setXY(i, pos.getX(i), pos.getY(i))
         }
-    }
-    uv.needsUpdate = true
-}
-
-/** Scale a PlaneGeometry's 0..1 UVs to world meters, matching setBoxWorldUVs. */
-export function setPlaneWorldUVs(geo: THREE.PlaneGeometry): void {
-    const { width, height } = geo.parameters
-    const uv = geo.attributes.uv as THREE.BufferAttribute
-    for (let i = 0; i < uv.count; i++) {
-        uv.setXY(i, uv.getX(i) * width, uv.getY(i) * height)
     }
     uv.needsUpdate = true
 }
@@ -118,7 +110,7 @@ function softBlotch(
 /**
  * Near-white painted wood planks running along V, meant to be tinted by the
  * material's `color`. One tile is 1 m wide holding four 25 cm planks; pair
- * with setBoxWorldUVs.
+ * with setWorldUVs.
  */
 export function createWoodTexture(): THREE.CanvasTexture {
     const size = 512

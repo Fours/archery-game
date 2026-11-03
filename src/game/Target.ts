@@ -5,6 +5,7 @@ const TARGET_RADIUS = 0.35
 const RING_SEGMENTS = 40
 const BACKING_RADIUS = 0.40
 const BACKING_THICKNESS = 0.05
+const BACKING_BEVEL = 0.015
 
 // Decorative tier ring sits just outside the bullseye and indicates score multiplier.
 const TIER_RING_RADIUS = 0.43
@@ -85,7 +86,7 @@ export class Target {
         this.object.add(this.bullseye)
 
         const backing = new THREE.Mesh(
-            new THREE.CylinderGeometry(BACKING_RADIUS, BACKING_RADIUS, BACKING_THICKNESS, 32),
+            makeBackingGeometry(),
             new THREE.MeshStandardMaterial({ color: 0x3d2812, roughness: 0.9 }),
         )
         // CylinderGeometry runs along Y; rotate so flat face points along +Z.
@@ -244,4 +245,26 @@ function scoreForRadius(r: number): number {
         if (r <= b.outer) return b.score
     }
     return 0
+}
+
+/**
+ * Wooden backing disk with rounded rims, built as a lathe around Y (like the
+ * CylinderGeometry it replaces): flat bottom → quarter-round → side →
+ * quarter-round → flat top.
+ */
+function makeBackingGeometry(): THREE.BufferGeometry {
+    const half = BACKING_THICKNESS / 2
+    const b = BACKING_BEVEL
+    const arcSteps = 4
+    const points: THREE.Vector2[] = [new THREE.Vector2(0, -half)]
+    for (let i = 0; i <= arcSteps; i++) {
+        const a = -Math.PI / 2 + (i / arcSteps) * (Math.PI / 2)
+        points.push(new THREE.Vector2(BACKING_RADIUS - b + Math.cos(a) * b, -half + b + Math.sin(a) * b))
+    }
+    for (let i = 0; i <= arcSteps; i++) {
+        const a = (i / arcSteps) * (Math.PI / 2)
+        points.push(new THREE.Vector2(BACKING_RADIUS - b + Math.cos(a) * b, half - b + Math.sin(a) * b))
+    }
+    points.push(new THREE.Vector2(0, half))
+    return new THREE.LatheGeometry(points, 40)
 }
