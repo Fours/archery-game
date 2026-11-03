@@ -86,6 +86,65 @@ const LEAF_RIM_STRENGTH = 0.12
 const LEAF_TRANSLUCENCY = 0.55
 const LEAF_TRANSLUCENCY_POWER = 4.0
 
+// Wind. Each tree bends from its base by an amount that grows with the square
+// of height above SWAY_START, so roots stay planted and the crown moves most;
+// tree position offsets the phase so the forest doesn't sway in lockstep. A
+// slow gust term swells and eases the whole motion, and leaf cards add a
+// faster, smaller flutter along their normals.
+const WIND_DIRECTION = new THREE.Vector2(1, 0.4).normalize() // world XZ
+const SWAY_START = 0.8 // meters above the trunk base, before tree scale
+const SWAY_AMOUNT = 0.006 // world meters of sway per m² of height above SWAY_START
+const SWAY_SPEED = 0.9 // rad/s
+const GUST_SPEED = 0.23 // rad/s
+const FLUTTER_AMOUNT = 0.025 // meters, before tree scale
+const FLUTTER_SPEED = 5.0 // rad/s
+
+/** Vertex GLSL that displaces `transformed` (tree-local) by the wind. */
+function windGlsl(flutter: boolean): string {
+    const f = (x: number) => x.toFixed(4)
+    return /* glsl */ `
+    {
+        vec3 treeOrigin = modelMatrix[3].xyz;
+        float phase = dot(treeOrigin.xz, vec2(0.37, 0.23));
+        float gust = 0.6 + 0.4 * sin(uWindTime * ${f(GUST_SPEED)} + phase * 0.5);
+        float h = max(transformed.y - ${f(SWAY_START)}, 0.0);
+        float bend = h * h * ${f(SWAY_AMOUNT)} * gust;
+        float s = sin(uWindTime * ${f(SWAY_SPEED)} + phase)
+            + 0.35 * sin(uWindTime * ${f(SWAY_SPEED * 2.3)} + phase * 1.7);
+        vec2 wind = vec2(${f(WIND_DIRECTION.x)}, ${f(WIND_DIRECTION.y)});
+        // Leans downwind on average, with a little cross-wind wobble.
+        vec2 push = wind * (0.5 + s)
+            + vec2(-wind.y, wind.x) * 0.3 * sin(uWindTime * ${f(SWAY_SPEED * 0.7)} + phase * 2.1);
+        // World push into tree-local space: transpose(mat3(model)) is
+        // scale * R^T, so dividing by scale leaves R^T, and the model matrix
+        // scales it back up — taller (scaled-up) trees sway proportionally.
+        mat3 m = mat3(modelMatrix);
+        transformed += transpose(m) * vec3(push.x, 0.0, push.y) * (bend / length(m[0]));
+        ${flutter ? `transformed += normal * ${f(FLUTTER_AMOUNT)} * gust
+            * sin(uWindTime * ${f(FLUTTER_SPEED)} + dot(position, vec3(3.1, 2.3, 4.7)));` : ''}
+    }`
+}
+
+/**
+ * Chain the wind displacement onto a material's existing onBeforeCompile
+ * (rim light etc.). Used on both the visible and the shadow-depth materials
+ * so shadows move with the trees.
+ */
+function addWind<T extends THREE.Material>(material: T, time: { value: number }, flutter: boolean): T {
+    const previous = material.onBeforeCompile
+    material.onBeforeCompile = (shader, renderer) => {
+        previous.call(material, shader, renderer)
+        shader.uniforms.uWindTime = time
+        shader.vertexShader = 'uniform float uWindTime;\n' + shader.vertexShader.replace(
+            '#include <begin_vertex>',
+            `#include <begin_vertex>\n${windGlsl(flutter)}`,
+        )
+    }
+    const previousKey = material.customProgramCacheKey.bind(material)
+    material.customProgramCacheKey = () => `${previousKey()}-wind-${flutter}`
+    return material
+}
+
 interface TreeSpec {
     x: number
     z: number
@@ -568,6 +627,11 @@ export class Trees {
     private barkMat: THREE.MeshStandardMaterial
     private leafMat: THREE.MeshStandardMaterial
     private leafTexture: THREE.CanvasTexture
+    // Shadow-map materials carrying the same wind displacement.
+    private barkDepthMat: THREE.MeshDepthMaterial
+    private leafDepthMat: THREE.MeshDepthMaterial
+    // Shared by every wind-patched program; advanced in update().
+    private windTime = { value: 0 }
     // Per-tree index subsets of a variant's leaf cards (see LEAF_CULL_DOT).
     private culledLeafGeos: THREE.BufferGeometry[] = []
 
@@ -615,6 +679,14 @@ export class Trees {
         }
         this.leafMat.customProgramCacheKey = () => `leaf-card-${LEAF_RIM_STRENGTH}-${LEAF_TRANSLUCENCY}`
 
+        addWind(this.barkMat, this.windTime, false)
+        addWind(this.leafMat, this.windTime, true)
+        this.barkDepthMat = addWind(new THREE.MeshDepthMaterial(), this.windTime, false)
+        this.leafDepthMat = addWind(new THREE.MeshDepthMaterial({
+            map: this.leafTexture,
+            alphaTest: LEAF_ALPHA_TEST,
+        }), this.windTime, true)
+
         for (const tree of TREES) {
             this.group.add(this.makeTree(tree))
         }
@@ -642,11 +714,13 @@ export class Trees {
         const bark = new THREE.Mesh(variant.bark, this.barkMat)
         bark.castShadow = true
         bark.receiveShadow = true
+        bark.customDepthMaterial = this.barkDepthMat
         tree.add(bark)
 
         const leaves = new THREE.Mesh(this.cullLeavesForViewer(variant.leaves, tree), this.leafMat)
         leaves.castShadow = true
         leaves.receiveShadow = true
+        leaves.customDepthMaterial = this.leafDepthMat
         leaves.userData.skipAO = true // see ScaledGTAOPass
         tree.add(leaves)
 
@@ -690,6 +764,10 @@ export class Trees {
         return geo
     }
 
+    update(dt: number): void {
+        this.windTime.value += dt
+    }
+
     dispose(): void {
         for (const g of this.culledLeafGeos) g.dispose()
         for (const v of this.variants.values()) {
@@ -698,6 +776,8 @@ export class Trees {
         }
         this.barkMat.dispose()
         this.leafMat.dispose()
+        this.barkDepthMat.dispose()
+        this.leafDepthMat.dispose()
         this.leafTexture.dispose()
     }
 }

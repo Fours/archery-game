@@ -320,6 +320,8 @@ export class Game {
         const dt = Math.min(0.05, (now - this.lastTime) / 1000)
         this.lastTime = now
 
+        this.world.update(dt)
+
         if (!this.gameOver) {
             if (this.locked) {
                 this.timeLeft = Math.max(0, this.timeLeft - dt)

@@ -113,6 +113,11 @@ export class World {
         scene.add(this.group)
     }
 
+    /** Ambient animation (tree wind); runs every frame, paused or not. */
+    update(dt: number): void {
+        this.trees.update(dt)
+    }
+
     dispose(): void {
         this.scene.remove(this.group)
         this.scene.environment = null
