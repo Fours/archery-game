@@ -16,6 +16,8 @@ const WALL_HEIGHT = ROOF_Y - 0.05
 const COUNTER_TOP_Y = 0.95
 const COUNTER_DEPTH = 0.55
 const COUNTER_TOP_THICK = 0.07
+// Top face of the counter, for props placed on it (e.g. KitScenery).
+export const COUNTER_SURFACE_Y = COUNTER_TOP_Y + COUNTER_TOP_THICK / 2
 // Counter top overhangs the front panel toward the player so its rounded
 // front edge reads as a chunky bar top.
 const COUNTER_LIP = 0.05

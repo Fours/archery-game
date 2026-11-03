@@ -5,6 +5,7 @@ import { CornerBows } from './CornerBows'
 import { Flowers } from './Flowers'
 import { createGrassTexture, setWorldUVs } from './materials'
 import { FrontRailing } from './FrontRailing'
+import { KitScenery } from './KitScenery'
 import { Plants } from './Plants'
 import { Sky, SKY_HORIZON } from './Sky'
 import { Trees } from './Trees'
@@ -36,6 +37,7 @@ export class World {
     private cornerBows: CornerBows
     private flowers: Flowers
     private frontRailing: FrontRailing
+    private kitScenery: KitScenery
     private plants: Plants
     private trees: Trees
     private sky: Sky
@@ -105,6 +107,9 @@ export class World {
         this.plants = new Plants()
         this.group.add(this.plants.group)
 
+        this.kitScenery = new KitScenery()
+        this.group.add(this.kitScenery.group)
+
         scene.add(this.group)
     }
 
@@ -116,6 +121,7 @@ export class World {
         this.booth.dispose()
         this.cornerBows.dispose()
         this.frontRailing.dispose()
+        this.kitScenery.dispose()
         this.flowers.dispose()
         this.plants.dispose()
         this.trees.dispose()

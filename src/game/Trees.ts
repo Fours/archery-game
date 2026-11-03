@@ -35,7 +35,7 @@ interface TreeSpec {
     scale?: number
 }
 
-// Foreground + background woods. Background positions sit at |x| > 8 or z > 4
+// Foreground woods plus an outer ring forming a forest clearing. Background positions sit at |x| > 8 or z > 4
 // so they aren't hidden behind the booth's solid side walls; one tall tree
 // goes deep behind the booth so its scaled-up canopy pokes over the roof.
 const TREES: TreeSpec[] = [
@@ -68,6 +68,24 @@ const TREES: TreeSpec[] = [
     { x:   9, z: 22,  scale: 1.1 },
     { x:   0, z: 19,  scale: 2.5 },
     { x:  -4, z: 28,  scale: 2.2 },
+    { x: -10, z: 16,  scale: 1.2 },
+    { x:  16, z: 16,  scale: 1.4 },
+    { x:  18, z: 24,  scale: 1.8 },
+    { x: -16, z: 30,  scale: 1.5 },
+
+    // Outer ring: taller trees closing the clearing in on every visible side,
+    // so the horizon reads as forest rather than open meadow.
+    { x: -28, z: -18, scale: 2.4 },
+    { x: -32, z:  -8, scale: 2.6 },
+    { x: -36, z:  10, scale: 3.0 },
+    { x: -30, z:  26, scale: 2.4 },
+    { x: -20, z:  34, scale: 2.8 },
+    { x:  -6, z:  40, scale: 3.2 },
+    { x:  10, z:  36, scale: 2.6 },
+    { x:  24, z:  30, scale: 3.0 },
+    { x:  34, z:  16, scale: 2.5 },
+    { x:  36, z:  -4, scale: 2.8 },
+    { x:  30, z: -14, scale: 2.2 },
 ]
 
 /**
