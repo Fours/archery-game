@@ -1,5 +1,5 @@
 import * as THREE from 'three'
-import { addRimLight } from './materials'
+import { addRimLight, createBarrelHeadTexture, createStaveTexture } from './materials'
 import { BACK_Z, FRONT_Z, HALF_WIDTH } from './Booth'
 
 const SCALE = 2
@@ -8,23 +8,27 @@ const BARREL_HEIGHT = 0.9
 const BARREL_RADIUS_MID = 0.32
 const BARREL_RADIUS_END = 0.28
 const SEGMENTS_Y = 12
-const SEGMENTS_RADIAL = 20
+const SEGMENTS_RADIAL = 32
 
-const BAND_TUBE = 0.018
-const BAND_OVERHANG = 0.003
-const BAND_HEIGHT_FRACTIONS = [0.15, 0.5, 0.85]
+// Flat iron hoops: thin straps that follow the bulge rather than round wire.
+// Pairs near each end (head + quarter hoops), as on a real cask.
+const HOOP_WIDTH = 0.04
+const HOOP_THICK = 0.006
+const HOOP_CENTER_FRACTIONS = [0.06, 0.2, 0.8, 0.94]
+const HOOP_SEGMENTS = 4
 
-const WOOD_COLOR = 0x6b3e1f
-const DARK_WOOD_COLOR = 0x2a1709
-const BAND_COLOR = 0x2a2a2a
+// Stave wall thickness, visible as end grain around the rim, and how far the
+// head sits below the stave ends (the chime).
+const STAVE_THICK = 0.022
+const HEAD_INSET = 0.018
 
-// Number of stave seams around the barrel. Each tile of the canvas (one wood
-// stripe + one dark seam at its right edge) tiles N_STAVES times around the
-// circumference, so N_STAVES dark vertical lines appear evenly spaced.
-const N_STAVES = 14
-const STAVE_TEXTURE_W = 256
-const STAVE_TEXTURE_H = 16
-const SEAM_PX = 6
+const N_STAVES = 16
+
+// Tints for the near-white canvas masks.
+const STAVE_COLOR = 0x8f5a32
+const HEAD_COLOR = 0x80502c
+const END_GRAIN_COLOR = 0x4a2c16
+const HOOP_COLOR = 0x3a3530
 
 interface BarrelSpec {
     x: number
@@ -58,66 +62,101 @@ const BARRELS: BarrelSpec[] = [
     { x: HALF_WIDTH - 0.8, z: BACK_Z + 0.8 },
 ]
 
+/** Profile radius at height fraction t: R_END at the ends, R_MID at the bilge. */
+function radiusAt(t: number): number {
+    return BARREL_RADIUS_END + (BARREL_RADIUS_MID - BARREL_RADIUS_END) * Math.sin(Math.PI * t)
+}
+
 /**
- * Wooden barrels with metal bands and vertical stave seams. The body is an
- * open LatheGeometry (no cap points in the profile) textured with a tiling
- * stave pattern, so the dark seams only appear on the curved side — never
- * on the top cap. A separate CircleGeometry mesh closes the top with a
- * plain wood material. The bottom is open and hidden by the ground plane.
+ * Wooden barrels with staves, flat iron hoops and a recessed head. The body is
+ * an open LatheGeometry (U wraps the circumference, V runs up) carrying a
+ * per-stave grain texture. Each open end gets a "head" assembly: an end-grain
+ * ring for the stave thickness, a short inner wall, and a plank disk set
+ * HEAD_INSET below the rim. Upright barrels only get a top head; the open
+ * bottom is hidden by the ground.
  */
 export class Barrels {
     readonly group: THREE.Group
+    private geos: THREE.BufferGeometry[] = []
+    private hoopGeos: THREE.BufferGeometry[] = []
+    private textures: THREE.Texture[] = []
+    private mats: THREE.Material[] = []
     private bodyGeo: THREE.BufferGeometry
-    private capGeo: THREE.BufferGeometry
-    private bodyTex: THREE.CanvasTexture
+    private rimGeo: THREE.BufferGeometry
+    private innerWallGeo: THREE.BufferGeometry
+    private headGeo: THREE.BufferGeometry
     private bodyMat: THREE.Material
-    private capMat: THREE.Material
-    private bandGeos: THREE.BufferGeometry[] = []
-    private bandMat: THREE.Material
+    private endGrainMat: THREE.Material
+    private headMat: THREE.Material
+    private hoopMat: THREE.Material
 
     constructor() {
         this.group = new THREE.Group()
 
         // Open-ended bulged profile: starts and ends at R_END (no r=0 cap
         // points), so the lathe produces only the side surface and the
-        // texture UVs span [0,1] across the visible side.
+        // texture's V spans [0,1] bottom to top.
         const profile: THREE.Vector2[] = []
         for (let i = 0; i <= SEGMENTS_Y; i++) {
             const t = i / SEGMENTS_Y
-            const y = t * BARREL_HEIGHT
-            const bulge = Math.sin(Math.PI * t)
-            const r = BARREL_RADIUS_END + (BARREL_RADIUS_MID - BARREL_RADIUS_END) * bulge
-            profile.push(new THREE.Vector2(r, y))
+            profile.push(new THREE.Vector2(radiusAt(t), t * BARREL_HEIGHT))
         }
         this.bodyGeo = new THREE.LatheGeometry(profile, SEGMENTS_RADIAL)
 
-        this.capGeo = new THREE.CircleGeometry(BARREL_RADIUS_END, SEGMENTS_RADIAL)
+        // Head parts are built relative to the stave ends at y = 0, head
+        // pointing +Y; makeHead() places them at either end.
+        const rIn = BARREL_RADIUS_END - STAVE_THICK
+        this.rimGeo = new THREE.RingGeometry(rIn, BARREL_RADIUS_END, SEGMENTS_RADIAL)
+        this.rimGeo.rotateX(-Math.PI / 2)
+        this.innerWallGeo = new THREE.CylinderGeometry(rIn, rIn, HEAD_INSET, SEGMENTS_RADIAL, 1, true)
+        this.innerWallGeo.translate(0, -HEAD_INSET / 2, 0)
+        this.headGeo = new THREE.CircleGeometry(rIn, SEGMENTS_RADIAL)
+        this.headGeo.rotateX(-Math.PI / 2)
+        this.headGeo.translate(0, -HEAD_INSET, 0)
+        this.geos.push(this.bodyGeo, this.rimGeo, this.innerWallGeo, this.headGeo)
 
-        this.bodyTex = makeStaveTexture()
-        this.bodyMat = addRimLight(new THREE.MeshStandardMaterial({
-            map: this.bodyTex,
-            roughness: 0.85,
-        }))
-        this.capMat = new THREE.MeshStandardMaterial({
-            color: WOOD_COLOR,
-            roughness: 0.85,
-        })
-        this.bandMat = new THREE.MeshStandardMaterial({
-            color: BAND_COLOR,
-            roughness: 0.5,
-            metalness: 0.6,
-        })
-
-        // Pre-compute one torus per band — radius matches the barrel's profile
-        // radius at that height plus a small overhang so the band protrudes.
-        for (const t of BAND_HEIGHT_FRACTIONS) {
-            const bulge = Math.sin(Math.PI * t)
-            const r =
-                BARREL_RADIUS_END +
-                (BARREL_RADIUS_MID - BARREL_RADIUS_END) * bulge +
-                BAND_OVERHANG
-            this.bandGeos.push(new THREE.TorusGeometry(r, BAND_TUBE, 8, 24))
+        // Each hoop is a strap lathed along the barrel's own profile, offset
+        // outward by HOOP_THICK, so it hugs the bulge; its short edges give it
+        // visible thickness.
+        for (const c of HOOP_CENTER_FRACTIONS) {
+            const t0 = c - HOOP_WIDTH / BARREL_HEIGHT / 2
+            const t1 = c + HOOP_WIDTH / BARREL_HEIGHT / 2
+            const pts = [new THREE.Vector2(radiusAt(t0), t0 * BARREL_HEIGHT)]
+            for (let i = 0; i <= HOOP_SEGMENTS; i++) {
+                const t = t0 + ((t1 - t0) * i) / HOOP_SEGMENTS
+                pts.push(new THREE.Vector2(radiusAt(t) + HOOP_THICK, t * BARREL_HEIGHT))
+            }
+            pts.push(new THREE.Vector2(radiusAt(t1), t1 * BARREL_HEIGHT))
+            this.hoopGeos.push(new THREE.LatheGeometry(pts, SEGMENTS_RADIAL))
         }
+
+        const staveTex = createStaveTexture(N_STAVES)
+        const headTex = createBarrelHeadTexture()
+        this.textures.push(staveTex, headTex)
+
+        this.bodyMat = addRimLight(new THREE.MeshStandardMaterial({
+            color: STAVE_COLOR,
+            map: staveTex,
+            roughness: 0.8,
+        }))
+        this.headMat = new THREE.MeshStandardMaterial({
+            color: HEAD_COLOR,
+            map: headTex,
+            roughness: 0.85,
+        })
+        // Rim and inner wall share this; DoubleSide so the inner wall (seen
+        // from inside the cylinder) renders.
+        this.endGrainMat = new THREE.MeshStandardMaterial({
+            color: END_GRAIN_COLOR,
+            roughness: 0.9,
+            side: THREE.DoubleSide,
+        })
+        this.hoopMat = new THREE.MeshStandardMaterial({
+            color: HOOP_COLOR,
+            roughness: 0.55,
+            metalness: 0.75,
+        })
+        this.mats.push(this.bodyMat, this.headMat, this.endGrainMat, this.hoopMat)
 
         for (const spec of BARRELS) {
             this.group.add(this.makeBarrel(spec))
@@ -138,82 +177,57 @@ export class Barrels {
             barrel.rotation.z = Math.PI / 2
         } else {
             barrel.position.set(spec.x, 0, spec.z)
-            // Random Y rotation so upright barrels don't look stamped from the same mold.
-            barrel.rotation.y = Math.random() * Math.PI * 2
         }
+        // Random spin about the long axis so barrels don't look stamped from
+        // the same mold (stave pattern and head boards both turn). 'ZYX'
+        // applies this local Y spin before the lay-down Z rotation, so a
+        // sideways barrel rolls in place instead of swinging around.
+        barrel.rotation.order = 'ZYX'
+        barrel.rotation.y = Math.random() * Math.PI * 2
 
         const body = new THREE.Mesh(this.bodyGeo, this.bodyMat)
         body.castShadow = true
         body.receiveShadow = true
         barrel.add(body)
 
-        // Top cap. CircleGeometry default lies in XY plane (normal +Z);
-        // rotate to face +Y and lift to the top of the barrel.
-        const topCap = new THREE.Mesh(this.capGeo, this.capMat)
-        topCap.rotation.x = -Math.PI / 2
-        topCap.position.y = BARREL_HEIGHT
-        topCap.receiveShadow = true
-        barrel.add(topCap)
-
-        // Bottom cap — only needed for sideways barrels. For upright barrels
-        // the open bottom sits on the ground and is hidden; for sideways
-        // barrels the bottom end now faces sideways and would expose the
-        // interior. rotation.x = π/2 flips the disk so it faces -Y in
-        // barrel-local, which the parent rotation.z = π/2 then swings to +X.
+        const top = this.makeHead()
+        top.position.y = BARREL_HEIGHT
+        barrel.add(top)
+        // Sideways barrels expose their bottom end too; flip a second head
+        // to face -Y.
         if (spec.onSide) {
-            const bottomCap = new THREE.Mesh(this.capGeo, this.capMat)
-            bottomCap.rotation.x = Math.PI / 2
-            bottomCap.position.y = 0
-            bottomCap.receiveShadow = true
-            barrel.add(bottomCap)
+            const bottom = this.makeHead()
+            bottom.rotation.x = Math.PI
+            barrel.add(bottom)
         }
 
-        for (let i = 0; i < BAND_HEIGHT_FRACTIONS.length; i++) {
-            const band = new THREE.Mesh(this.bandGeos[i], this.bandMat)
-            // Torus default axis is +Z; rotate so it sits flat around the
-            // barrel's vertical axis (+Y).
-            band.rotation.x = Math.PI / 2
-            band.position.y = BAND_HEIGHT_FRACTIONS[i] * BARREL_HEIGHT
-            band.castShadow = true
-            barrel.add(band)
+        for (const geo of this.hoopGeos) {
+            const hoop = new THREE.Mesh(geo, this.hoopMat)
+            hoop.castShadow = true
+            hoop.receiveShadow = true
+            barrel.add(hoop)
         }
 
         return barrel
     }
 
-    dispose(): void {
-        this.bodyGeo.dispose()
-        this.capGeo.dispose()
-        this.bodyTex.dispose()
-        this.bodyMat.dispose()
-        this.capMat.dispose()
-        this.bandMat.dispose()
-        for (const g of this.bandGeos) g.dispose()
+    private makeHead(): THREE.Group {
+        const head = new THREE.Group()
+        const rim = new THREE.Mesh(this.rimGeo, this.endGrainMat)
+        const wall = new THREE.Mesh(this.innerWallGeo, this.endGrainMat)
+        const disk = new THREE.Mesh(this.headGeo, this.headMat)
+        for (const m of [rim, wall, disk]) {
+            m.receiveShadow = true
+            head.add(m)
+        }
+        return head
     }
-}
 
-function makeStaveTexture(): THREE.CanvasTexture {
-    const canvas = document.createElement('canvas')
-    canvas.width = STAVE_TEXTURE_W
-    canvas.height = STAVE_TEXTURE_H
-    const ctx = canvas.getContext('2d')
-    if (!ctx) throw new Error('2D canvas context unavailable')
-
-    const wood = '#' + WOOD_COLOR.toString(16).padStart(6, '0')
-    const dark = '#' + DARK_WOOD_COLOR.toString(16).padStart(6, '0')
-
-    ctx.fillStyle = wood
-    ctx.fillRect(0, 0, STAVE_TEXTURE_W, STAVE_TEXTURE_H)
-
-    // Dark seam at the right edge of the tile. With RepeatWrapping +
-    // repeat.x = N_STAVES, this seam appears N_STAVES times around the barrel.
-    ctx.fillStyle = dark
-    ctx.fillRect(STAVE_TEXTURE_W - SEAM_PX, 0, SEAM_PX, STAVE_TEXTURE_H)
-
-    const tex = new THREE.CanvasTexture(canvas)
-    tex.colorSpace = THREE.SRGBColorSpace
-    tex.wrapS = THREE.RepeatWrapping
-    tex.wrapT = THREE.ClampToEdgeWrapping
-    tex.repeat.x = N_STAVES
-    return tex
+    dispose(): void {
+        for (const g of this.geos) g.dispose()
+        for (const g of this.hoopGeos) g.dispose()
+        // Material.dispose() doesn't free maps.
+        for (const t of this.textures) t.dispose()
+        for (const m of this.mats) m.dispose()
+    }
 }

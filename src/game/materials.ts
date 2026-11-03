@@ -242,6 +242,80 @@ function drawPlankBoard(
 }
 
 /**
+ * Near-white barrel staves for a LatheGeometry side (U = around, V = up, both
+ * 0..1): one tile wraps the whole circumference once with `staves` boards,
+ * each with its own tone and grain, separated by dark seams. The ends darken
+ * where hands and ground have grimed the wood. Tinted by material `color`.
+ */
+export function createStaveTexture(staves: number): THREE.CanvasTexture {
+    const width = 1024
+    const height = 512
+    const sw = width / staves
+    const [canvas, ctx] = makeCanvas(width, height)
+
+    for (let s = 0; s < staves; s++) {
+        const x0 = s * sw
+        ctx.save()
+        ctx.beginPath()
+        ctx.rect(x0, 0, sw, height)
+        ctx.clip()
+        drawPlankBoard(ctx, x0, 0, sw, height)
+        ctx.restore()
+
+        // Seam: dark joint with a thin highlight on the next stave's edge.
+        ctx.fillStyle = 'rgba(30, 16, 6, 0.85)'
+        ctx.fillRect(x0, 0, 3, height)
+        ctx.fillStyle = 'rgba(255, 240, 215, 0.25)'
+        ctx.fillRect(x0 + 3, 0, 2, height)
+    }
+
+    const grime = ctx.createLinearGradient(0, 0, 0, height)
+    grime.addColorStop(0, 'rgba(50, 30, 15, 0.45)')
+    grime.addColorStop(0.12, 'rgba(50, 30, 15, 0)')
+    grime.addColorStop(0.88, 'rgba(50, 30, 15, 0)')
+    grime.addColorStop(1, 'rgba(50, 30, 15, 0.45)')
+    ctx.fillStyle = grime
+    ctx.fillRect(0, 0, width, height)
+
+    const tex = finishTexture(canvas, 1)
+    tex.wrapT = THREE.ClampToEdgeWrapping
+    return tex
+}
+
+/**
+ * Near-white barrel head for a CircleGeometry (UVs span the disk's bounding
+ * square): four boards across with dark seams, darkening toward the rim
+ * where the head sits in the staves' groove. Tinted by material `color`.
+ */
+export function createBarrelHeadTexture(): THREE.CanvasTexture {
+    const size = 512
+    const boards = 4
+    const bw = size / boards
+    const [canvas, ctx] = makeCanvas(size)
+
+    for (let b = 0; b < boards; b++) {
+        const x0 = b * bw
+        ctx.save()
+        ctx.beginPath()
+        ctx.rect(x0, 0, bw, size)
+        ctx.clip()
+        drawPlankBoard(ctx, x0, 0, bw, size)
+        ctx.restore()
+        ctx.fillStyle = 'rgba(30, 16, 6, 0.8)'
+        ctx.fillRect(x0, 0, 3, size)
+    }
+
+    const rim = ctx.createRadialGradient(size / 2, size / 2, size * 0.3, size / 2, size / 2, size / 2)
+    rim.addColorStop(0, 'rgba(40, 22, 10, 0)')
+    rim.addColorStop(0.85, 'rgba(40, 22, 10, 0.35)')
+    rim.addColorStop(1, 'rgba(40, 22, 10, 0.75)')
+    ctx.fillStyle = rim
+    ctx.fillRect(0, 0, size, size)
+
+    return finishTexture(canvas, 1)
+}
+
+/**
  * Near-white solid hardwood board with grain running along U (no plank seams),
  * for a single long counter-top rail. Wavy grain lines plus a few "cathedral"
  * arches of flat-sawn figure; tinted by material `color`. Every wave uses an
