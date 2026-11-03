@@ -1,4 +1,5 @@
 import * as THREE from 'three'
+import { addRimLight } from './materials'
 import { BACK_Z, FRONT_Z, HALF_WIDTH } from './Booth'
 
 const SCALE = 2
@@ -93,10 +94,10 @@ export class Barrels {
         this.capGeo = new THREE.CircleGeometry(BARREL_RADIUS_END, SEGMENTS_RADIAL)
 
         this.bodyTex = makeStaveTexture()
-        this.bodyMat = new THREE.MeshStandardMaterial({
+        this.bodyMat = addRimLight(new THREE.MeshStandardMaterial({
             map: this.bodyTex,
             roughness: 0.85,
-        })
+        }))
         this.capMat = new THREE.MeshStandardMaterial({
             color: WOOD_COLOR,
             roughness: 0.85,

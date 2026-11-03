@@ -1,4 +1,5 @@
 import * as THREE from 'three'
+import { addRimLight } from './materials'
 
 const TARGET_RADIUS = 0.35
 const RING_SEGMENTS = 40
@@ -112,13 +113,13 @@ export class Target {
         // Lives outside `bullseye` so it survives explosions.
         this.ring = new THREE.Mesh(
             new THREE.TorusGeometry(TIER_RING_RADIUS, TIER_RING_TUBE, 12, 40),
-            new THREE.MeshStandardMaterial({
+            addRimLight(new THREE.MeshStandardMaterial({
                 color: TIER_COLOR[tier],
                 roughness: 0.4,
                 metalness: 0.25,
                 emissive: TIER_COLOR[tier],
                 emissiveIntensity: 0.18,
-            }),
+            })),
         )
         this.ring.position.z = 0.01
         this.ring.castShadow = true

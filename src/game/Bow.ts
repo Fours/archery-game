@@ -1,4 +1,5 @@
 import * as THREE from 'three'
+import { addRimLight } from './materials'
 import { createFletching } from './fletching'
 
 const BOW_HALF_HEIGHT = 0.55
@@ -22,7 +23,7 @@ export class Bow {
     constructor() {
         this.group = new THREE.Group()
 
-        const woodMat = new THREE.MeshStandardMaterial({ color: 0x4a2e10, roughness: 0.85 })
+        const woodMat = addRimLight(new THREE.MeshStandardMaterial({ color: 0x4a2e10, roughness: 0.85 }), 0.12)
         const gripMat = new THREE.MeshStandardMaterial({ color: 0x1f140a, roughness: 0.95 })
         const stringMat = new THREE.MeshStandardMaterial({ color: 0xeeeeee, roughness: 0.5 })
 

@@ -1,4 +1,5 @@
 import * as THREE from 'three'
+import { createFabricTexture, createWoodTexture, setBoxWorldUVs } from './materials'
 
 // Booth footprint. The player stands at z = 0; the booth opens toward +Z.
 // FRONT_Z is the front facade (counter and front posts), BACK_Z is the back wall.
@@ -36,14 +37,37 @@ const BUNTING_COLORS = [RED, WHITE, BLUE, YELLOW]
  */
 export class Booth {
     readonly group: THREE.Group
+    private woodTex: THREE.Texture
+    private fabricTex: THREE.Texture
 
     constructor() {
         this.group = new THREE.Group()
 
-        const woodMat = new THREE.MeshStandardMaterial({ color: WOOD, roughness: 0.9 })
-        const darkWoodMat = new THREE.MeshStandardMaterial({ color: DARK_WOOD, roughness: 0.9 })
-        const redMat = new THREE.MeshStandardMaterial({ color: RED, roughness: 0.85 })
-        const whiteMat = new THREE.MeshStandardMaterial({ color: WHITE, roughness: 0.85 })
+        // Both textures are near-white tint masks shared by the light/dark
+        // variants; box geometries get world-meter UVs so density stays uniform.
+        this.woodTex = createWoodTexture()
+        this.fabricTex = createFabricTexture()
+
+        const woodMat = new THREE.MeshStandardMaterial({
+            color: WOOD,
+            map: this.woodTex,
+            roughness: 0.85,
+        })
+        const darkWoodMat = new THREE.MeshStandardMaterial({
+            color: DARK_WOOD,
+            map: this.woodTex,
+            roughness: 0.85,
+        })
+        const redMat = new THREE.MeshStandardMaterial({
+            color: RED,
+            map: this.fabricTex,
+            roughness: 0.9,
+        })
+        const whiteMat = new THREE.MeshStandardMaterial({
+            color: WHITE,
+            map: this.fabricTex,
+            roughness: 0.9,
+        })
         const housingMat = new THREE.MeshStandardMaterial({
             color: 0x1a1a1a,
             roughness: 0.45,
@@ -69,6 +93,7 @@ export class Booth {
 
     private addPosts(mat: THREE.Material): void {
         const geo = new THREE.BoxGeometry(POST_THICK, ROOF_Y, POST_THICK)
+        setBoxWorldUVs(geo)
         const corners: [number, number][] = [
             [-HALF_WIDTH, FRONT_Z],
             [HALF_WIDTH, FRONT_Z],
@@ -87,6 +112,7 @@ export class Booth {
     private addWalls(mat: THREE.Material): void {
         const sideLen = Math.abs(BACK_Z - FRONT_Z) - POST_THICK
         const sideGeo = new THREE.BoxGeometry(WALL_THICK, WALL_HEIGHT, sideLen)
+        setBoxWorldUVs(sideGeo)
         for (const x of [-HALF_WIDTH, HALF_WIDTH]) {
             const wall = new THREE.Mesh(sideGeo, mat)
             wall.position.set(x, WALL_HEIGHT / 2, (FRONT_Z + BACK_Z) / 2)
@@ -95,6 +121,7 @@ export class Booth {
             this.group.add(wall)
         }
         const backGeo = new THREE.BoxGeometry(HALF_WIDTH * 2 - POST_THICK, WALL_HEIGHT, WALL_THICK)
+        setBoxWorldUVs(backGeo)
         const back = new THREE.Mesh(backGeo, mat)
         back.position.set(0, WALL_HEIGHT / 2, BACK_Z)
         back.receiveShadow = true
@@ -105,6 +132,7 @@ export class Booth {
         const innerWidth = HALF_WIDTH * 2 - POST_THICK
 
         const topGeo = new THREE.BoxGeometry(innerWidth, COUNTER_TOP_THICK, COUNTER_DEPTH)
+        setBoxWorldUVs(topGeo)
         const top = new THREE.Mesh(topGeo, woodMat)
         top.position.set(0, COUNTER_TOP_Y, FRONT_Z - COUNTER_DEPTH / 2)
         top.castShadow = true
@@ -112,6 +140,7 @@ export class Booth {
         this.group.add(top)
 
         const frontGeo = new THREE.BoxGeometry(innerWidth, COUNTER_TOP_Y, 0.05)
+        setBoxWorldUVs(frontGeo)
         const front = new THREE.Mesh(frontGeo, darkMat)
         front.position.set(0, COUNTER_TOP_Y / 2, FRONT_Z + 0.025)
         front.receiveShadow = true
@@ -126,6 +155,7 @@ export class Booth {
         const totalDepth = sideLen + overhang
         const stripeWidth = totalWidth / VALANCE_STRIPES
         const stripeGeo = new THREE.BoxGeometry(stripeWidth, 0.08, totalDepth)
+        setBoxWorldUVs(stripeGeo)
         for (let i = 0; i < VALANCE_STRIPES; i++) {
             const x = -totalWidth / 2 + (i + 0.5) * stripeWidth
             const stripe = new THREE.Mesh(stripeGeo, i % 2 === 0 ? redMat : whiteMat)
@@ -142,6 +172,7 @@ export class Booth {
         const totalWidth = HALF_WIDTH * 2 + overhang
         const stripeWidth = totalWidth / VALANCE_STRIPES
         const stripeGeo = new THREE.BoxGeometry(stripeWidth, VALANCE_HEIGHT, 0.04)
+        setBoxWorldUVs(stripeGeo)
         for (let i = 0; i < VALANCE_STRIPES; i++) {
             const x = -totalWidth / 2 + (i + 0.5) * stripeWidth
             const stripe = new THREE.Mesh(stripeGeo, i % 2 === 0 ? redMat : whiteMat)
@@ -290,6 +321,9 @@ export class Booth {
     }
 
     dispose(): void {
+        // Material.dispose() doesn't free maps, so release the shared textures here.
+        this.woodTex.dispose()
+        this.fabricTex.dispose()
         this.group.traverse((obj) => {
             const mesh = obj as THREE.Mesh
             if (mesh.geometry && typeof mesh.geometry.dispose === 'function') {

@@ -1,4 +1,5 @@
 import * as THREE from 'three'
+import { addRimLight } from './materials'
 
 const TRUNK_HEIGHT = 3.5
 const TRUNK_RADIUS_BOTTOM = 0.22
@@ -94,20 +95,20 @@ export class Trees {
             TRUNK_SEGMENTS,
         )
         // Unit sphere — each blob mesh sets its own scale.setScalar(r).
-        this.foliageGeo = new THREE.SphereGeometry(1, 10, 8)
+        this.foliageGeo = new THREE.SphereGeometry(1, 24, 16)
 
-        this.trunkMat = new THREE.MeshStandardMaterial({
+        this.trunkMat = addRimLight(new THREE.MeshStandardMaterial({
             color: TRUNK_COLOR,
             roughness: 0.9,
-        })
-        this.foliageLightMat = new THREE.MeshStandardMaterial({
+        }))
+        this.foliageLightMat = addRimLight(new THREE.MeshStandardMaterial({
             color: FOLIAGE_LIGHT,
             roughness: 0.85,
-        })
-        this.foliageDarkMat = new THREE.MeshStandardMaterial({
+        }))
+        this.foliageDarkMat = addRimLight(new THREE.MeshStandardMaterial({
             color: FOLIAGE_DARK,
             roughness: 0.85,
-        })
+        }))
 
         for (const tree of TREES) {
             this.group.add(this.makeTree(tree))

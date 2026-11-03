@@ -3,6 +3,7 @@ import { Barrels } from './Barrels'
 import { Booth } from './Booth'
 import { CornerBows } from './CornerBows'
 import { Flowers } from './Flowers'
+import { createGrassTexture, setPlaneWorldUVs } from './materials'
 import { FrontRailing } from './FrontRailing'
 import { Plants } from './Plants'
 import { Sky, SKY_HORIZON } from './Sky'
@@ -16,6 +17,8 @@ const SUN_POSITION = new THREE.Vector3(22, 26, 34)
 // Shadow frustum is fit tightly around the booth so the 2048² map stays crisp.
 const SHADOW_EXTENT = 24
 const ENV_INTENSITY = 0.9
+const GROUND_SIZE = 500
+const GRASS_TILE_METERS = 6
 
 /**
  * The static environment shared by every level: sky/fog, lights, the grass
@@ -70,9 +73,11 @@ export class World {
         this.group.add(sun)
         this.group.add(sun.target)
 
-        this.grassTexture = createGrassTexture()
+        this.grassTexture = createGrassTexture(GRASS_TILE_METERS)
+        const groundGeo = new THREE.PlaneGeometry(GROUND_SIZE, GROUND_SIZE)
+        setPlaneWorldUVs(groundGeo)
         this.ground = new THREE.Mesh(
-            new THREE.PlaneGeometry(500, 500),
+            groundGeo,
             new THREE.MeshStandardMaterial({ map: this.grassTexture, roughness: 1 }),
         )
         this.ground.rotation.x = -Math.PI / 2
@@ -118,33 +123,4 @@ export class World {
         ;(this.ground.material as THREE.Material).dispose()
         this.grassTexture.dispose()
     }
-}
-
-function createGrassTexture(): THREE.Texture {
-    const size = 256
-    const canvas = document.createElement('canvas')
-    canvas.width = size
-    canvas.height = size
-    const ctx = canvas.getContext('2d')
-    if (!ctx) throw new Error('2D canvas context unavailable')
-
-    ctx.fillStyle = '#3a6e2a'
-    ctx.fillRect(0, 0, size, size)
-
-    for (let i = 0; i < 6000; i++) {
-        const x = Math.random() * size
-        const y = Math.random() * size
-        const r = 60 + Math.floor(Math.random() * 30)
-        const g = 110 + Math.floor(Math.random() * 70)
-        const b = 40 + Math.floor(Math.random() * 30)
-        ctx.fillStyle = `rgb(${r}, ${g}, ${b})`
-        ctx.fillRect(x, y, 1.5, 1.5)
-    }
-
-    const tex = new THREE.CanvasTexture(canvas)
-    tex.wrapS = THREE.RepeatWrapping
-    tex.wrapT = THREE.RepeatWrapping
-    tex.repeat.set(60, 60)
-    tex.colorSpace = THREE.SRGBColorSpace
-    return tex
 }
