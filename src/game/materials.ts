@@ -546,3 +546,176 @@ export function createGrassTexture(metersPerTile: number): THREE.CanvasTexture {
 
     return finishTexture(canvas, metersPerTile)
 }
+
+/**
+ * Near-white tint mask for the bow and arrow shafts: long straight grain along
+ * V with gentle wander, soft streaks and pores. Unlike the plank textures it
+ * has no board seams, and it is tiled anisotropically (0.16 m across the grain,
+ * 0.64 m along it) because limbs and shafts are long and narrow. Grain waves use
+ * whole periods over the tile height so the texture stays seamless. Pair with
+ * loft UVs (createLoft) or any UVs in meters with V along the length.
+ */
+export function createBowWoodTexture(): THREE.CanvasTexture {
+    const tileU = 0.16
+    const tileV = 0.64
+    const w = 256
+    const h = 1024
+    const [canvas, ctx] = makeCanvas(w, h)
+    const tau = Math.PI * 2
+
+    ctx.fillStyle = 'rgb(238, 228, 214)'
+    ctx.fillRect(0, 0, w, h)
+
+    // Broad streaks running with the grain give the wood depth.
+    for (let i = 0; i < 16; i++) {
+        const x = Math.random() * w
+        const hw = 6 + Math.random() * 26
+        const a = 0.06 + Math.random() * 0.12
+        const tone = Math.random() < 0.55 ? `rgba(130, 78, 36, ${a})` : `rgba(255, 246, 228, ${a})`
+        for (const dx of [-w, 0, w]) {
+            const g = ctx.createLinearGradient(x + dx - hw, 0, x + dx + hw, 0)
+            g.addColorStop(0, 'rgba(0, 0, 0, 0)')
+            g.addColorStop(0.5, tone)
+            g.addColorStop(1, 'rgba(0, 0, 0, 0)')
+            ctx.fillStyle = g
+            ctx.fillRect(x + dx - hw, 0, hw * 2, h)
+        }
+    }
+
+    // Fine grain lines; two summed sines (integer periods) keep them seamless in V.
+    for (let i = 0; i < 180; i++) {
+        const x0 = Math.random() * w
+        const amp = 1 + Math.random() * 5
+        const k = 1 + Math.floor(Math.random() * 3)
+        const phase = Math.random() * tau
+        ctx.strokeStyle = `rgba(95, 52, 20, ${0.06 + Math.random() * 0.2})`
+        ctx.lineWidth = 0.6 + Math.random() * 1.8
+        for (const dx of [-w, 0, w]) {
+            ctx.beginPath()
+            for (let y = 0; y <= h; y += 8) {
+                const t = (y / h) * tau
+                const x = x0 + dx + Math.sin(t * k + phase) * amp + Math.sin(t * (k * 3 + 1) + phase * 2) * amp * 0.3
+                if (y === 0) ctx.moveTo(x, y)
+                else ctx.lineTo(x, y)
+            }
+            ctx.stroke()
+        }
+    }
+
+    // Pores: short dark dashes along the grain.
+    for (let i = 0; i < 2500; i++) {
+        ctx.fillStyle = `rgba(70, 40, 15, ${0.08 + Math.random() * 0.12})`
+        ctx.fillRect(Math.random() * w, Math.random() * h, 1, 3 + Math.random() * 6)
+    }
+
+    const tex = finishTexture(canvas, 1)
+    tex.repeat.set(1 / tileU, 1 / tileV)
+    return tex
+}
+
+/**
+ * Fully colored oxblood leather wrapped in overlapping diagonal strips for the
+ * bow grip: each strip shades from its tucked-under edge to the raised edge
+ * that laps over the next one, with a dark crease between, pebbled grain and a
+ * few worn highlights. Strips run at 45° with a period that divides the tile,
+ * so it is seamless. One tile = 0.064 m; UVs in meters.
+ */
+export function createLeatherWrapTexture(): THREE.CanvasTexture {
+    const size = 256
+    const period = 64
+    const [canvas, ctx] = makeCanvas(size)
+    const img = ctx.createImageData(size, size)
+    for (let y = 0; y < size; y++) {
+        for (let x = 0; x < size; x++) {
+            const d = ((x + y) % period) / period
+            let shade = 0.68 + 0.42 * (d * d * (3 - 2 * d))
+            if (d > 0.94) shade *= 0.55 // crease where the next strip laps over
+            shade *= 0.9 + Math.random() * 0.18
+            const i = (y * size + x) * 4
+            img.data[i] = Math.min(255, 128 * shade)
+            img.data[i + 1] = Math.min(255, 52 * shade)
+            img.data[i + 2] = Math.min(255, 32 * shade)
+            img.data[i + 3] = 255
+        }
+    }
+    ctx.putImageData(img, 0, 0)
+    for (let i = 0; i < 10; i++) {
+        softBlotch(ctx, size, Math.random() * size, Math.random() * size, 12 + Math.random() * 30, 'rgba(255, 190, 150, 0.08)')
+    }
+    return finishTexture(canvas, 0.064)
+}
+
+/**
+ * Near-white twisted-strand mask for bowstrings and cord bindings: diagonal
+ * strands with a rounded highlight across each. Tinted by material or vertex
+ * color. One tile = 0.012 m; UVs in meters (around × along).
+ */
+export function createStringTexture(): THREE.CanvasTexture {
+    const size = 64
+    const period = 16
+    const [canvas, ctx] = makeCanvas(size)
+    const img = ctx.createImageData(size, size)
+    for (let y = 0; y < size; y++) {
+        for (let x = 0; x < size; x++) {
+            const d = ((x + y) % period) / period
+            const v = 255 * (0.62 + 0.38 * Math.sin(Math.PI * d))
+            const i = (y * size + x) * 4
+            img.data[i] = v
+            img.data[i + 1] = v
+            img.data[i + 2] = v
+            img.data[i + 3] = 255
+        }
+    }
+    ctx.putImageData(img, 0, 0)
+    return finishTexture(canvas, 0.012)
+}
+
+/**
+ * Near-white feather vane mask, tinted by the material color. U runs along the
+ * vane from the trailing edge (u = 0, nock end) to the leading edge; V runs from
+ * the quill (v = 0) out to the vane's edge. Barbs sweep back toward the nock,
+ * with a few splits and a darker outer edge. Clamped, not tiled: map it with
+ * UVs normalized to the vane's bounding box.
+ */
+export function createFeatherTexture(): THREE.CanvasTexture {
+    const w = 256
+    const h = 128
+    const [canvas, ctx] = makeCanvas(w, h)
+
+    // Canvas y = 0 is the outer edge (v = 1); the quill sits at the bottom.
+    const g = ctx.createLinearGradient(0, 0, 0, h)
+    g.addColorStop(0, 'rgb(150, 150, 150)')
+    g.addColorStop(0.35, 'rgb(225, 225, 225)')
+    g.addColorStop(1, 'rgb(250, 250, 250)')
+    ctx.fillStyle = g
+    ctx.fillRect(0, 0, w, h)
+
+    // Barbs: from the quill, angled back toward the trailing edge.
+    const sweep = h * 0.7
+    for (let x = -10; x < w + sweep; x += 2) {
+        ctx.strokeStyle = Math.random() < 0.5 ? 'rgba(255, 255, 255, 0.35)' : 'rgba(60, 60, 60, 0.16)'
+        ctx.lineWidth = 1
+        ctx.beginPath()
+        ctx.moveTo(x, h)
+        ctx.quadraticCurveTo(x - sweep * 0.4, h * 0.45, x - sweep, 0)
+        ctx.stroke()
+    }
+    // Splits: a few darker gaps where barbs have separated.
+    for (let i = 0; i < 7; i++) {
+        const x = Math.random() * w + sweep * 0.5
+        ctx.strokeStyle = 'rgba(40, 40, 40, 0.35)'
+        ctx.lineWidth = 1.5
+        ctx.beginPath()
+        ctx.moveTo(x - sweep * 0.45, h * 0.45)
+        ctx.quadraticCurveTo(x - sweep * 0.7, h * 0.2, x - sweep, 0)
+        ctx.stroke()
+    }
+    // Quill.
+    ctx.fillStyle = 'rgb(255, 252, 240)'
+    ctx.fillRect(0, h - 5, w, 5)
+
+    const tex = new THREE.CanvasTexture(canvas)
+    tex.colorSpace = THREE.SRGBColorSpace
+    tex.anisotropy = ANISOTROPY
+    return tex
+}

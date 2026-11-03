@@ -255,7 +255,7 @@ export class Game {
 
         this.drawing = false
         this.drawTime = 0
-        this.bow.setDraw(0)
+        this.bow.release()
     }
 
     private fireArrow(strength: number): void {
@@ -283,11 +283,12 @@ export class Game {
      *  Returns 'target' if the arrow was consumed by a target hit (caller should
      *  remove it from the scene), 'ground' if it stuck to the ground, or null. */
     private resolveArrowCollisions(arrow: Arrow): 'target' | 'ground' | null {
-        const bestHit = this.level.findHit(arrow.prevPosition, arrow.object.position)
+        const bestHit = this.level.findHit(arrow.prevTip, arrow.tip)
 
-        const fy = arrow.prevPosition.y
-        const ty = arrow.object.position.y
-        const groundT = fy >= 0 && ty < 0 ? fy / (fy - ty) : Infinity
+        const fy = arrow.prevTip.y
+        const ty = arrow.tip.y
+        // A tip already below ground (a steep downward shot spawns it there) sticks at t = 0.
+        const groundT = ty >= 0 ? Infinity : fy >= 0 ? fy / (fy - ty) : 0
 
         if (bestHit && bestHit.t <= groundT) {
             bestHit.target.onHit()
@@ -321,6 +322,7 @@ export class Game {
         this.lastTime = now
 
         this.world.update(dt)
+        this.bow.update(dt)
 
         if (!this.gameOver) {
             if (this.locked) {

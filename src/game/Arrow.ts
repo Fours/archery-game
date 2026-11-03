@@ -1,43 +1,23 @@
 import * as THREE from 'three'
-import { createFletching } from './fletching'
+import { ARROW_LENGTH, ArrowModel } from './ArrowModel'
 
 const GRAVITY = 22
-const SHAFT_LENGTH = 0.75
-const SHAFT_RADIUS = 0.012
-const TIP_LENGTH = 0.08
+// How far the tip sinks into the ground past the contact point.
+const GROUND_EMBED = 0.06
 
 export class Arrow {
     readonly object: THREE.Group
-    readonly prevPosition = new THREE.Vector3()
+    /** Broadhead point last frame and this frame: the segment to test for hits.
+     *  (`object.position` is the nock end, ARROW_LENGTH behind the tip.) */
+    readonly prevTip = new THREE.Vector3()
+    readonly tip = new THREE.Vector3()
     private velocity = new THREE.Vector3()
     private stuck = false
 
+    private model = new ArrowModel({ castShadow: true })
+
     constructor() {
-        const group = new THREE.Group()
-
-        const shaft = new THREE.Mesh(
-            new THREE.CylinderGeometry(SHAFT_RADIUS, SHAFT_RADIUS, SHAFT_LENGTH, 10),
-            new THREE.MeshStandardMaterial({ color: 0x9c6b3c, roughness: 0.7 }),
-        )
-        // CylinderGeometry runs along Y by default; rotate so it lies along Z.
-        // Position so the tail is at z=0 and the body extends toward -Z.
-        shaft.rotation.x = Math.PI / 2
-        shaft.position.z = -SHAFT_LENGTH / 2
-        shaft.castShadow = true
-        group.add(shaft)
-
-        const tip = new THREE.Mesh(
-            new THREE.ConeGeometry(0.022, TIP_LENGTH, 10),
-            new THREE.MeshStandardMaterial({ color: 0x3a3a3a, metalness: 0.7, roughness: 0.3 }),
-        )
-        tip.rotation.x = -Math.PI / 2
-        tip.position.z = -SHAFT_LENGTH - TIP_LENGTH / 2
-        tip.castShadow = true
-        group.add(tip)
-
-        group.add(createFletching())
-
-        this.object = group
+        this.object = this.model.group
     }
 
     get isStuck(): boolean {
@@ -46,29 +26,39 @@ export class Arrow {
 
     launch(origin: THREE.Vector3, direction: THREE.Vector3, speed: number): void {
         this.object.position.copy(origin)
-        this.prevPosition.copy(origin)
         this.alignTo(direction)
         this.velocity.copy(direction).setLength(speed)
+        this.updateTip()
+        this.prevTip.copy(this.tip)
         this.stuck = false
     }
 
     /** Integrate physics for this frame. Caller is responsible for sticking
-     *  the arrow on hit (use `prevPosition` and `object.position` as the segment). */
+     *  the arrow on hit (use `prevTip` and `tip` as the segment). */
     update(dt: number): void {
         if (this.stuck) return
-        this.prevPosition.copy(this.object.position)
+        this.prevTip.copy(this.tip)
         this.velocity.y -= GRAVITY * dt
         this.object.position.addScaledVector(this.velocity, dt)
         this.alignTo(this.velocity)
+        this.updateTip()
     }
 
-    /** Snap to the ground plane and embed the tip slightly along travel direction. */
+    /** Pin the arrow where its tip crossed y = 0 this frame, with the tip
+     *  embedded GROUND_EMBED along the travel direction and the shaft and
+     *  fletching left standing above the ground. */
     stickToGround(): void {
         const dir = this.velocity.clone().normalize()
-        this.object.position.y = 0
-        this.object.position.addScaledVector(dir, 0.06)
-        this.alignTo(this.velocity)
+        const fy = this.prevTip.y
+        const t = fy > this.tip.y ? Math.min(1, Math.max(0, fy / (fy - this.tip.y))) : 1
+        this.tip.lerpVectors(this.prevTip, this.tip, t).addScaledVector(dir, GROUND_EMBED)
+        this.object.position.copy(this.tip).addScaledVector(dir, -ARROW_LENGTH)
+        this.alignTo(dir)
         this.stuck = true
+    }
+
+    private updateTip(): void {
+        this.tip.copy(this.velocity).setLength(ARROW_LENGTH).add(this.object.position)
     }
 
     private alignTo(direction: THREE.Vector3): void {
@@ -78,17 +68,6 @@ export class Arrow {
     }
 
     dispose(): void {
-        this.object.traverse((obj) => {
-            const mesh = obj as THREE.Mesh
-            if (mesh.geometry && typeof mesh.geometry.dispose === 'function') {
-                mesh.geometry.dispose()
-            }
-            const mat = mesh.material
-            if (Array.isArray(mat)) {
-                mat.forEach((m) => m.dispose())
-            } else if (mat && typeof (mat as THREE.Material).dispose === 'function') {
-                ;(mat as THREE.Material).dispose()
-            }
-        })
+        this.model.dispose()
     }
 }

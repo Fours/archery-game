@@ -1,6 +1,6 @@
 import * as THREE from 'three'
 import { Bow } from './Bow'
-import { createFletching } from './fletching'
+import { ArrowModel } from './ArrowModel'
 
 const SCALE = 2
 
@@ -25,9 +25,8 @@ const QUIVER_TRIM_COLOR = 0x1f140a
 const QUIVER_Y_G = 0.508
 const QUIVER_Z_G = -1.55
 
-const ARROW_SHAFT_LEN = 0.7
-const ARROW_SHAFT_RADIUS = 0.01
-const ARROW_SHAFT_COLOR = 0x9c6b3c
+// Shrinks the shared arrow model so its tip stays inside the quiver.
+const ARROW_SCALE = 0.84
 // Arrow tail Y in quiver-local frame. Pushes the fletching well above the rim
 // (rim at +QUIVER_HEIGHT/2 = 0.275) while keeping the tip just inside the
 // quiver bottom (-0.275).
@@ -66,6 +65,7 @@ const QUIVER_X = 3.5
 export class FrontRailing {
     readonly group: THREE.Group
     private bows: Bow[] = []
+    private arrows: ArrowModel[] = []
     private disposableGeos: THREE.BufferGeometry[] = []
     private disposableMats: THREE.Material[] = []
 
@@ -126,11 +126,9 @@ export class FrontRailing {
 
         for (let i = 0; i < ARROWS.length; i++) {
             const spec = ARROWS[i]
-            const arrow = makeQuiverArrow(
-                spec.fletchColor,
-                this.disposableGeos,
-                this.disposableMats,
-            )
+            const model = new ArrowModel({ fletchColor: spec.fletchColor })
+            this.arrows.push(model)
+            const arrow = makeQuiverArrow(model)
             arrow.position.set(spec.x, ARROW_TAIL_Y_LOCAL, spec.z)
             // Stagger fletching rotation deterministically so feathers face
             // different directions without depending on random.
@@ -143,61 +141,26 @@ export class FrontRailing {
 
     dispose(): void {
         for (const bow of this.bows) bow.dispose()
+        for (const arrow of this.arrows) arrow.dispose()
         for (const g of this.disposableGeos) g.dispose()
         for (const m of this.disposableMats) m.dispose()
     }
 }
 
 /**
- * Build a single quiver arrow. The shaft is laid out with tip toward -Z and
- * tail at z=0 (the same convention as the player's nocked arrow); the whole
- * group is then rotated so the tip points toward -Y and the tail sits at the
- * group's origin. Caller positions the group at the desired tail location in
- * the quiver's local frame.
+ * Wrap a quiver arrow model (tip toward -Z, nock at z=0) in a group rotated so
+ * the tip points toward -Y and the nock sits at the group's origin. Caller
+ * positions the group at the desired tail location in the quiver's local frame.
  */
-function makeQuiverArrow(
-    fletchColor: number,
-    geos: THREE.BufferGeometry[],
-    mats: THREE.Material[],
-): THREE.Group {
+function makeQuiverArrow(model: ArrowModel): THREE.Group {
     const arrow = new THREE.Group()
     // 'YXZ' so the caller's rotation.y spins the arrow around its long axis
     // (the world Y after rotation.x = -π/2) instead of swinging the tip
     // away from -Y. With default 'XYZ' the composition is Rx*Ry, which
     // makes Ry tip the *already-down* arrow back toward the horizontal.
     arrow.rotation.order = 'YXZ'
-
-    const shaftGeo = new THREE.CylinderGeometry(
-        ARROW_SHAFT_RADIUS,
-        ARROW_SHAFT_RADIUS,
-        ARROW_SHAFT_LEN,
-        8,
-    )
-    const shaftMat = new THREE.MeshStandardMaterial({
-        color: ARROW_SHAFT_COLOR,
-        roughness: 0.7,
-    })
-    const shaft = new THREE.Mesh(shaftGeo, shaftMat)
-    shaft.rotation.x = Math.PI / 2
-    shaft.position.z = -ARROW_SHAFT_LEN / 2
-    arrow.add(shaft)
-    geos.push(shaftGeo)
-    mats.push(shaftMat)
-
-    const fletching = createFletching(fletchColor)
-    arrow.add(fletching)
-    // createFletching builds geom + material per call; track them so dispose()
-    // can release them along with the rest.
-    fletching.traverse((obj) => {
-        const m = obj as THREE.Mesh
-        if (m.geometry && typeof m.geometry.dispose === 'function') {
-            geos.push(m.geometry)
-        }
-        const mat = m.material as THREE.Material | undefined
-        if (mat && typeof mat.dispose === 'function') {
-            mats.push(mat)
-        }
-    })
+    model.group.scale.setScalar(ARROW_SCALE)
+    arrow.add(model.group)
 
     // -Z (arrow forward) → -Y so the tip drops into the quiver.
     arrow.rotation.x = -Math.PI / 2
