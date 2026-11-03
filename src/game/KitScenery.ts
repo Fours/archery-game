@@ -1,6 +1,5 @@
 import * as THREE from 'three'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
-import { COUNTER_SURFACE_Y } from './Booth'
 
 // One GLB bundling every KayKit model we use (CC0, Kay Lousberg — see
 // public/models/LICENSE-KayKit-Medieval-Hexagon.txt). Each model is a
@@ -25,9 +24,6 @@ interface Placement {
 }
 
 const PLACEMENTS: Placement[] = [
-    // On the counter, left of center: the booth's own arrow supply.
-    { model: 'bucket_arrows', x: -2.7, y: COUNTER_SURFACE_Y, z: -2.25, scale: 2.6, rotY: 0.4 },
-
     // Outside front-left: stacked crates and a sack beside the barrels.
     { model: 'crate_A_big', x: -6.6, z: 0.9, scale: PROP_SCALE, rotY: 0.3 },
     { model: 'crate_A_big', x: -6.55, y: 0.67, z: 0.9, scale: PROP_SCALE, rotY: -0.2 },
@@ -42,9 +38,9 @@ const PLACEMENTS: Placement[] = [
 ]
 
 /**
- * Third-party KayKit props dressing the booth: arrows on the counter and
- * crates, produce, a wheelbarrow, and a weapon rack outside. Loads asynchronously — the group is
- * empty until the GLB arrives. If disposed before then, the late-arriving
+ * Third-party KayKit props dressing the outside of the booth: crates, a
+ * sack, produce, a wheelbarrow, and a weapon rack. Loads asynchronously —
+ * the group is empty until the GLB arrives. If disposed before then, the late-arriving
  * resources are released immediately (React StrictMode mounts twice in dev).
  */
 export class KitScenery {
