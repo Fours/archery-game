@@ -1,18 +1,10 @@
 import * as THREE from 'three'
 import { Arrow } from './Arrow'
-import { Barrels } from './Barrels'
-import { Booth, HALF_WIDTH, ROOF_Y } from './Booth'
 import { Bow } from './Bow'
-import { CornerBows } from './CornerBows'
-import { Flowers } from './Flowers'
-import { FrontRailing } from './FrontRailing'
 import { HitEffect } from './HitEffect'
-import { Plants } from './Plants'
-import { RowFlags } from './RowFlags'
-import { Target } from './Target'
-import { Trees } from './Trees'
-import type { Tier } from './Target'
-import { TargetRow } from './TargetRow'
+import { Level } from './Level'
+import { LEVELS } from './levels'
+import { World } from './World'
 
 const EYE_HEIGHT = 1.7
 const MAX_DRAW_TIME = 2.0
@@ -21,28 +13,6 @@ const MAX_ARROW_SPEED = 65
 const MOUSE_SENSITIVITY = 0.0022
 const MAX_PITCH = Math.PI / 2 - 0.001
 const ROUND_DURATION = 120
-
-// Rows are arranged front→middle→back (closest to player first). The user spec:
-//   - The furthest row sits at the booth's vertical middle.
-//   - The nearer two rows sit above and below it.
-//   - Adjacent rows move in opposite horizontal directions.
-//   - Front = green ×1, middle = blue ×2, back = purple ×3 (handled by Tier).
-const ROW_CONFIGS: {
-    z: number
-    y: number
-    tier: Tier
-    speed: number
-    direction: 1 | -1
-    startCenterX: number
-}[] = [
-    { z: -4.5,  y: 1.4,                                 tier: 'green',  speed: 2.0, direction:  1, startCenterX:  0.0 },
-    { z: -7.5,  y: ROOF_Y - 1.6,                        tier: 'blue',   speed: 1.5, direction: -1, startCenterX: -1.0 },
-    { z: -10.5, y: (1.4 + (ROOF_Y - 1.6)) / 2,          tier: 'purple', speed: 1.1, direction:  1, startCenterX:  1.0 },
-]
-
-const TARGETS_PER_ROW = 3
-const ROW_TARGET_SPACING = 2.6
-const ROW_EDGE_PADDING = 0.7 // keep targets away from side walls
 
 type LockListener = (locked: boolean) => void
 type ScoreListener = (score: number) => void
@@ -60,19 +30,11 @@ export class Game {
     private scene: THREE.Scene
     private camera: THREE.PerspectiveCamera
     private bow: Bow
-    private barrels: Barrels
-    private booth: Booth
-    private cornerBows: CornerBows
-    private flowers: Flowers
-    private frontRailing: FrontRailing
-    private plants: Plants
-    private rowFlags: RowFlags
-    private trees: Trees
-    private targetRows: TargetRow[] = []
-    private allTargets: Target[] = []
+    private world: World
+    private level: Level
+    private levelIndex = 0
     private arrows: Arrow[] = []
     private effects: HitEffect[] = []
-    private grassTexture: THREE.Texture
 
     private locked = false
     private euler = new THREE.Euler(0, 0, 0, 'YXZ')
@@ -111,8 +73,6 @@ export class Game {
         container.appendChild(this.renderer.domElement)
 
         this.scene = new THREE.Scene()
-        this.scene.background = new THREE.Color(0x87ceeb)
-        this.scene.fog = new THREE.Fog(0x87ceeb, 90, 280)
 
         this.camera = new THREE.PerspectiveCamera(
             75,
@@ -123,58 +83,10 @@ export class Game {
         this.camera.position.set(0, EYE_HEIGHT, 0)
         this.scene.add(this.camera)
 
-        const hemi = new THREE.HemisphereLight(0xb1e1ff, 0x4a6e3c, 0.65)
-        this.scene.add(hemi)
+        this.world = new World(this.scene)
 
-        const sun = new THREE.DirectionalLight(0xfff2cc, 1.25)
-        sun.position.set(40, 60, 30)
-        sun.castShadow = true
-        sun.shadow.mapSize.set(1024, 1024)
-        // Shadow frustum widened to cover the larger booth footprint.
-        sun.shadow.camera.left = -60
-        sun.shadow.camera.right = 60
-        sun.shadow.camera.top = 60
-        sun.shadow.camera.bottom = -60
-        sun.shadow.camera.near = 1
-        sun.shadow.camera.far = 220
-        this.scene.add(sun)
-
-        this.grassTexture = createGrassTexture()
-        const ground = new THREE.Mesh(
-            new THREE.PlaneGeometry(500, 500),
-            new THREE.MeshStandardMaterial({ map: this.grassTexture, roughness: 1 }),
-        )
-        ground.rotation.x = -Math.PI / 2
-        ground.receiveShadow = true
-        this.scene.add(ground)
-
-        this.booth = new Booth()
-        this.scene.add(this.booth.group)
-
-        this.cornerBows = new CornerBows()
-        this.scene.add(this.cornerBows.group)
-
-        this.frontRailing = new FrontRailing()
-        this.scene.add(this.frontRailing.group)
-
-        this.barrels = new Barrels()
-        this.scene.add(this.barrels.group)
-
-        this.trees = new Trees()
-        this.scene.add(this.trees.group)
-
-        this.flowers = new Flowers()
-        this.scene.add(this.flowers.group)
-
-        this.plants = new Plants()
-        this.scene.add(this.plants.group)
-
-        this.rowFlags = new RowFlags(
-            ROW_CONFIGS.map((c) => ({ tier: c.tier, z: c.z, y: c.y })),
-        )
-        this.scene.add(this.rowFlags.group)
-
-        this.buildTargetRows()
+        this.level = new Level(LEVELS[this.levelIndex])
+        this.scene.add(this.level.group)
 
         this.bow = new Bow()
         this.bow.group.position.set(0.28, -0.18, -0.55)
@@ -190,52 +102,19 @@ export class Game {
         this.frameId = requestAnimationFrame(this.animate)
     }
 
-    private buildTargetRows(): void {
-        // Center the offsets around 0 so each row's center == row midpoint.
-        const totalSpan = (TARGETS_PER_ROW - 1) * ROW_TARGET_SPACING
-        const offsets: number[] = []
-        for (let i = 0; i < TARGETS_PER_ROW; i++) {
-            offsets.push(-totalSpan / 2 + i * ROW_TARGET_SPACING)
-        }
-        // Center-X bounds so even the outermost target stays inside the side walls.
-        const maxOffset = Math.max(...offsets.map((v) => Math.abs(v)))
-        const centerLimit = HALF_WIDTH - ROW_EDGE_PADDING - maxOffset
+    /** Swap in the level at `index`: tear down the current level's targets/rows/flags
+     *  and clear every arrow and hit effect so nothing carries over. */
+    private loadLevel(index: number): void {
+        this.clearArrowsAndEffects()
+        this.scene.remove(this.level.group)
+        this.level.dispose()
 
-        for (const cfg of ROW_CONFIGS) {
-            const targets: Target[] = []
-            for (let i = 0; i < TARGETS_PER_ROW; i++) {
-                const t = new Target(new THREE.Vector3(0, cfg.y, cfg.z), cfg.tier)
-                this.scene.add(t.object)
-                targets.push(t)
-                this.allTargets.push(t)
-            }
-            const row = new TargetRow({
-                targets,
-                offsets,
-                y: cfg.y,
-                z: cfg.z,
-                speed: cfg.speed,
-                direction: cfg.direction,
-                bounds: { min: -centerLimit, max: centerLimit },
-                startCenterX: clamp(cfg.startCenterX, -centerLimit, centerLimit),
-                tier: cfg.tier,
-                halfWidth: HALF_WIDTH,
-            })
-            this.scene.add(row.barsGroup)
-            this.targetRows.push(row)
-        }
-
+        this.levelIndex = index
+        this.level = new Level(LEVELS[index])
+        this.scene.add(this.level.group)
     }
 
-    requestLock(): void {
-        if (this.gameOver) return
-        if (!this.locked) {
-            this.renderer.domElement.requestPointerLock()
-        }
-    }
-
-    /** Reset the round: clear arrows/effects, restore targets, zero the score, resume play. */
-    restart(): void {
+    private clearArrowsAndEffects(): void {
         for (const arrow of this.arrows) {
             this.scene.remove(arrow.object)
             arrow.dispose()
@@ -246,7 +125,18 @@ export class Game {
             effect.dispose()
         }
         this.effects = []
-        for (const target of this.allTargets) target.reset()
+    }
+
+    requestLock(): void {
+        if (this.gameOver) return
+        if (!this.locked) {
+            this.renderer.domElement.requestPointerLock()
+        }
+    }
+
+    /** Reset the round: rebuild the current level, zero the score, resume play. */
+    restart(): void {
+        this.loadLevel(this.levelIndex)
 
         this.score = 0
         this.onScoreChange(0)
@@ -290,18 +180,8 @@ export class Game {
         this.arrows = []
         for (const effect of this.effects) effect.dispose()
         this.effects = []
-        for (const target of this.allTargets) target.dispose()
-        this.allTargets = []
-        for (const row of this.targetRows) row.dispose()
-        this.targetRows = []
-        this.barrels.dispose()
-        this.booth.dispose()
-        this.cornerBows.dispose()
-        this.frontRailing.dispose()
-        this.flowers.dispose()
-        this.plants.dispose()
-        this.rowFlags.dispose()
-        this.trees.dispose()
+        this.level.dispose()
+        this.world.dispose()
         this.bow.dispose()
 
         this.scene.traverse((obj) => {
@@ -316,7 +196,6 @@ export class Game {
                 ;(mat as THREE.Material).dispose()
             }
         })
-        this.grassTexture.dispose()
         this.renderer.dispose()
 
         const canvas = this.renderer.domElement
@@ -395,24 +274,13 @@ export class Game {
      *  Returns 'target' if the arrow was consumed by a target hit (caller should
      *  remove it from the scene), 'ground' if it stuck to the ground, or null. */
     private resolveArrowCollisions(arrow: Arrow): 'target' | 'ground' | null {
-        // Find the earliest target hit along this frame's segment, if any.
-        let bestT = Infinity
-        let bestHit:
-            | { point: THREE.Vector3; score: number; multiplier: number; target: Target }
-            | null = null
-        for (const target of this.allTargets) {
-            const hit = target.testHit(arrow.prevPosition, arrow.object.position)
-            if (hit && hit.t < bestT) {
-                bestT = hit.t
-                bestHit = { point: hit.point, score: hit.score, multiplier: hit.multiplier, target }
-            }
-        }
+        const bestHit = this.level.findHit(arrow.prevPosition, arrow.object.position)
 
         const fy = arrow.prevPosition.y
         const ty = arrow.object.position.y
         const groundT = fy >= 0 && ty < 0 ? fy / (fy - ty) : Infinity
 
-        if (bestHit && bestT <= groundT) {
+        if (bestHit && bestHit.t <= groundT) {
             bestHit.target.onHit()
             const effect = new HitEffect(bestHit.point, bestHit.score, bestHit.multiplier)
             this.scene.add(effect.object)
@@ -458,8 +326,7 @@ export class Game {
             }
 
             // Advance moving targets first so arrow hit-tests use this frame's positions.
-            for (const row of this.targetRows) row.update(dt)
-            for (const target of this.allTargets) target.update(dt)
+            this.level.update(dt)
 
             const consumed: Arrow[] = []
             for (const arrow of this.arrows) {
@@ -492,44 +359,11 @@ export class Game {
                 this.effects = survivors
             }
 
-            if (this.timeLeft <= 0 || this.allTargets.every((t) => t.isDisabled)) {
+            if (this.timeLeft <= 0 || this.level.isComplete) {
                 this.triggerGameOver()
             }
         }
 
         this.renderer.render(this.scene, this.camera)
     }
-}
-
-function clamp(v: number, lo: number, hi: number): number {
-    return Math.max(lo, Math.min(hi, v))
-}
-
-function createGrassTexture(): THREE.Texture {
-    const size = 256
-    const canvas = document.createElement('canvas')
-    canvas.width = size
-    canvas.height = size
-    const ctx = canvas.getContext('2d')
-    if (!ctx) throw new Error('2D canvas context unavailable')
-
-    ctx.fillStyle = '#3a6e2a'
-    ctx.fillRect(0, 0, size, size)
-
-    for (let i = 0; i < 6000; i++) {
-        const x = Math.random() * size
-        const y = Math.random() * size
-        const r = 60 + Math.floor(Math.random() * 30)
-        const g = 110 + Math.floor(Math.random() * 70)
-        const b = 40 + Math.floor(Math.random() * 30)
-        ctx.fillStyle = `rgb(${r}, ${g}, ${b})`
-        ctx.fillRect(x, y, 1.5, 1.5)
-    }
-
-    const tex = new THREE.CanvasTexture(canvas)
-    tex.wrapS = THREE.RepeatWrapping
-    tex.wrapT = THREE.RepeatWrapping
-    tex.repeat.set(60, 60)
-    tex.colorSpace = THREE.SRGBColorSpace
-    return tex
 }
