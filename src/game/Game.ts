@@ -4,6 +4,7 @@ import { Bow } from './Bow'
 import { HitEffect } from './HitEffect'
 import { Level } from './Level'
 import { LEVELS } from './levels'
+import { PostFX } from './PostFX'
 import { World } from './World'
 
 const EYE_HEIGHT = 1.7
@@ -13,6 +14,7 @@ const MAX_ARROW_SPEED = 65
 const MOUSE_SENSITIVITY = 0.0022
 const MAX_PITCH = Math.PI / 2 - 0.001
 const ROUND_DURATION = 120
+const EXPOSURE = 1.15
 
 type LockListener = (locked: boolean) => void
 type ScoreListener = (score: number) => void
@@ -27,6 +29,7 @@ export class Game {
     private onTimeChange: TimeListener
 
     private renderer: THREE.WebGLRenderer
+    private postfx: PostFX
     private scene: THREE.Scene
     private camera: THREE.PerspectiveCamera
     private bow: Bow
@@ -65,11 +68,14 @@ export class Game {
         this.onGameOver = onGameOver
         this.onTimeChange = onTimeChange
 
-        this.renderer = new THREE.WebGLRenderer({ antialias: true })
+        // MSAA happens inside PostFX's render target, so the default framebuffer skips it.
+        this.renderer = new THREE.WebGLRenderer({ antialias: false })
         this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
         this.renderer.setSize(window.innerWidth, window.innerHeight)
         this.renderer.shadowMap.enabled = true
-        this.renderer.shadowMap.type = THREE.PCFSoftShadowMap
+        this.renderer.shadowMap.type = THREE.PCFShadowMap
+        this.renderer.toneMapping = THREE.ACESFilmicToneMapping
+        this.renderer.toneMappingExposure = EXPOSURE
         container.appendChild(this.renderer.domElement)
 
         this.scene = new THREE.Scene()
@@ -83,7 +89,7 @@ export class Game {
         this.camera.position.set(0, EYE_HEIGHT, 0)
         this.scene.add(this.camera)
 
-        this.world = new World(this.scene)
+        this.world = new World(this.scene, this.renderer)
 
         this.level = new Level(LEVELS[this.levelIndex])
         this.scene.add(this.level.group)
@@ -91,6 +97,8 @@ export class Game {
         this.bow = new Bow()
         this.bow.group.position.set(0.28, -0.18, -0.55)
         this.camera.add(this.bow.group)
+
+        this.postfx = new PostFX(this.renderer, this.scene, this.camera)
 
         window.addEventListener('resize', this.onResize)
         window.addEventListener('keydown', this.onKeyDown)
@@ -196,6 +204,7 @@ export class Game {
                 ;(mat as THREE.Material).dispose()
             }
         })
+        this.postfx.dispose()
         this.renderer.dispose()
 
         const canvas = this.renderer.domElement
@@ -300,6 +309,7 @@ export class Game {
         this.camera.aspect = window.innerWidth / window.innerHeight
         this.camera.updateProjectionMatrix()
         this.renderer.setSize(window.innerWidth, window.innerHeight)
+        this.postfx.setSize(window.innerWidth, window.innerHeight)
     }
 
     private animate = (): void => {
@@ -364,6 +374,6 @@ export class Game {
             }
         }
 
-        this.renderer.render(this.scene, this.camera)
+        this.postfx.render()
     }
 }

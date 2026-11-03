@@ -5,9 +5,17 @@ import { CornerBows } from './CornerBows'
 import { Flowers } from './Flowers'
 import { FrontRailing } from './FrontRailing'
 import { Plants } from './Plants'
+import { Sky, SKY_HORIZON } from './Sky'
 import { Trees } from './Trees'
 
-const SKY_COLOR = 0x87ceeb
+// Late-afternoon key light: warm, low enough to rake in under the booth roof
+// from behind the player.
+const SUN_COLOR = 0xffd9a0
+const SUN_INTENSITY = 3.2
+const SUN_POSITION = new THREE.Vector3(22, 26, 34)
+// Shadow frustum is fit tightly around the booth so the 2048² map stays crisp.
+const SHADOW_EXTENT = 24
+const ENV_INTENSITY = 0.9
 
 /**
  * The static environment shared by every level: sky/fog, lights, the grass
@@ -27,31 +35,40 @@ export class World {
     private frontRailing: FrontRailing
     private plants: Plants
     private trees: Trees
+    private sky: Sky
     private grassTexture: THREE.Texture
     private ground: THREE.Mesh
 
-    constructor(scene: THREE.Scene) {
+    constructor(scene: THREE.Scene, renderer: THREE.WebGLRenderer) {
         this.scene = scene
         this.group = new THREE.Group()
 
-        scene.background = new THREE.Color(SKY_COLOR)
-        scene.fog = new THREE.Fog(SKY_COLOR, 90, 280)
+        this.sky = new Sky(renderer)
+        this.group.add(this.sky.group)
+        scene.environment = this.sky.environment
+        scene.environmentIntensity = ENV_INTENSITY
+        scene.fog = new THREE.Fog(SKY_HORIZON, 40, 260)
 
-        const hemi = new THREE.HemisphereLight(0xb1e1ff, 0x4a6e3c, 0.65)
+        // Weak bounce fill — the env map now carries most of the ambient.
+        const hemi = new THREE.HemisphereLight(0xcfe4ff, 0x6b5a3a, 0.35)
         this.group.add(hemi)
 
-        const sun = new THREE.DirectionalLight(0xfff2cc, 1.25)
-        sun.position.set(40, 60, 30)
+        const sun = new THREE.DirectionalLight(SUN_COLOR, SUN_INTENSITY)
+        sun.position.copy(SUN_POSITION)
+        sun.target.position.set(0, 0, -8)
         sun.castShadow = true
-        sun.shadow.mapSize.set(1024, 1024)
-        // Shadow frustum widened to cover the larger booth footprint.
-        sun.shadow.camera.left = -60
-        sun.shadow.camera.right = 60
-        sun.shadow.camera.top = 60
-        sun.shadow.camera.bottom = -60
+        sun.shadow.mapSize.set(2048, 2048)
+        sun.shadow.camera.left = -SHADOW_EXTENT
+        sun.shadow.camera.right = SHADOW_EXTENT
+        sun.shadow.camera.top = SHADOW_EXTENT
+        sun.shadow.camera.bottom = -SHADOW_EXTENT
         sun.shadow.camera.near = 1
-        sun.shadow.camera.far = 220
+        sun.shadow.camera.far = 120
+        sun.shadow.bias = -0.0004
+        sun.shadow.normalBias = 0.03
+        sun.shadow.radius = 3
         this.group.add(sun)
+        this.group.add(sun.target)
 
         this.grassTexture = createGrassTexture()
         this.ground = new THREE.Mesh(
@@ -88,6 +105,8 @@ export class World {
 
     dispose(): void {
         this.scene.remove(this.group)
+        this.scene.environment = null
+        this.sky.dispose()
         this.barrels.dispose()
         this.booth.dispose()
         this.cornerBows.dispose()

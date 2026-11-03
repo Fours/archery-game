@@ -24,8 +24,8 @@ const RED = 0xc8332c
 const WHITE = 0xf2efe6
 const BLUE = 0x2b4f8c
 const YELLOW = 0xf0d447
-const WOOD = 0x6b4423
-const DARK_WOOD = 0x3d2812
+const WOOD = 0x8f5c34
+const DARK_WOOD = 0x5c3a1f
 
 const BUNTING_COLORS = [RED, WHITE, BLUE, YELLOW]
 
@@ -52,7 +52,7 @@ export class Booth {
         const bulbMat = new THREE.MeshStandardMaterial({
             color: 0xfff2cc,
             emissive: 0xffd97a,
-            emissiveIntensity: 1.6,
+            emissiveIntensity: 3.5,
             roughness: 0.4,
         })
 
@@ -255,7 +255,7 @@ export class Booth {
             // SpotLight is a sibling rather than a child so its target reference
             // doesn't fight the fixture's lookAt orientation. Shadow casting is
             // off — the directional sun already provides the scene's shadows.
-            const spot = new THREE.SpotLight(0xffe4a0, 8, 22, Math.PI / 5, 0.5, 1.0)
+            const spot = new THREE.SpotLight(0xffe4a0, 12, 24, Math.PI / 4.5, 0.6, 1.0)
             spot.position.set(x, ROOF_Y - dropY, z)
             spot.target = sharedTarget
             this.group.add(spot)
