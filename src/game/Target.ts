@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import { addRimLight } from './materials'
+import { sharedResource } from './shared'
 
 const TARGET_RADIUS = 0.35
 const RING_SEGMENTS = 40
@@ -10,6 +11,15 @@ const BACKING_BEVEL = 0.015
 // Decorative tier ring sits just outside the bullseye and indicates score multiplier.
 const TIER_RING_RADIUS = 0.43
 const TIER_RING_TUBE = 0.025
+const RING_BASE_EMISSIVE = 0.18
+
+// Hit glow: the tier ring flashes a lighter shade of its hue and an additive
+// halo blooms around it, both fading out over GLOW_TIME.
+const GLOW_TIME = 1.0
+const GLOW_LIGHTEN = 0.25 // how far the flash color is pulled toward white
+const GLOW_EMISSIVE = 3 // peak emissiveIntensity; pushes the ring past PostFX BLOOM_THRESHOLD
+const HALO_HALF_SIZE = 0.62
+const HALO_INTENSITY = 0.9
 
 // Bands ordered innermost → outermost. Score is awarded for the smallest band whose
 // outer radius covers the hit; outermost band's `outer` is also the overall TARGET_RADIUS.
@@ -72,6 +82,10 @@ export class Target {
     private state: State = 'idle'
     private stateTime = 0
     private hitCount = 0
+    private glowTime = GLOW_TIME
+    private ringBaseColor = new THREE.Color()
+    private glowColor = new THREE.Color()
+    private halo: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>
 
     constructor(position: THREE.Vector3, tier: Tier) {
         this.tier = tier
@@ -119,12 +133,34 @@ export class Target {
                 roughness: 0.4,
                 metalness: 0.25,
                 emissive: TIER_COLOR[tier],
-                emissiveIntensity: 0.18,
+                emissiveIntensity: RING_BASE_EMISSIVE,
             })),
         )
         this.ring.position.z = 0.01
         this.ring.castShadow = true
         this.object.add(this.ring)
+
+        this.ringBaseColor.setHex(TIER_COLOR[tier])
+        this.glowColor.setHex(TIER_COLOR[tier]).lerp(new THREE.Color(0xffffff), GLOW_LIGHTEN)
+
+        // Additive halo behind the hit flash. Hidden until a hit; skipped by AO
+        // (a transparent quad would otherwise darken the scene in the AO pass).
+        const haloAssets = halo.acquire()
+        this.halo = new THREE.Mesh(
+            haloAssets.geometry,
+            new THREE.MeshBasicMaterial({
+                map: haloAssets.texture,
+                color: this.glowColor.clone().multiplyScalar(HALO_INTENSITY),
+                transparent: true,
+                opacity: 0,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false,
+            }),
+        )
+        this.halo.position.z = 0.012
+        this.halo.visible = false
+        this.halo.userData.skipAO = true
+        this.object.add(this.halo)
     }
 
     /**
@@ -161,6 +197,8 @@ export class Target {
         this.state = 'cooling'
         this.stateTime = 0
         this.hitCount++
+        this.glowTime = 0
+        this.applyGlow()
     }
 
     get isDisabled(): boolean {
@@ -175,13 +213,30 @@ export class Target {
         this.bullseye.visible = true
         this.bullseye.scale.setScalar(1)
         this.bullseye.rotation.y = 0
-        const bright = TIER_COLOR[this.tier]
-        this.ring.material.color.setHex(bright)
-        this.ring.material.emissive.setHex(bright)
+        this.ringBaseColor.setHex(TIER_COLOR[this.tier])
+        this.glowTime = GLOW_TIME
+        this.applyGlow()
     }
 
-    /** Advance the hit→reload→idle state machine. */
+    /** Blend the ring between its base color and the hit flash, and fade the halo. */
+    private applyGlow(): void {
+        const t = Math.min(this.glowTime / GLOW_TIME, 1)
+        const k = (1 - t) * (1 - t) // bright at the hit, easing out
+        const mat = this.ring.material
+        mat.color.copy(this.ringBaseColor).lerp(this.glowColor, k)
+        mat.emissive.copy(mat.color)
+        mat.emissiveIntensity = RING_BASE_EMISSIVE + (GLOW_EMISSIVE - RING_BASE_EMISSIVE) * k
+        this.halo.material.opacity = k
+        this.halo.visible = k > 0
+    }
+
+    /** Advance the hit glow and the hit→reload→idle state machine. */
     update(dt: number): void {
+        if (this.glowTime < GLOW_TIME) {
+            this.glowTime += dt
+            this.applyGlow()
+        }
+
         if (this.state === 'idle' || this.state === 'disabled') return
 
         this.stateTime += dt
@@ -193,9 +248,8 @@ export class Target {
                     // dims to its dark variant so the player can read remaining targets.
                     this.state = 'disabled'
                     this.stateTime = 0
-                    const dark = TIER_DARK_COLOR[this.tier]
-                    this.ring.material.color.setHex(dark)
-                    this.ring.material.emissive.setHex(dark)
+                    this.ringBaseColor.setHex(TIER_DARK_COLOR[this.tier])
+                    this.applyGlow()
                     return
                 }
                 this.state = 'reloading'
@@ -225,6 +279,11 @@ export class Target {
     }
 
     dispose(): void {
+        // The halo's geometry and texture are shared; only its material is ours.
+        this.object.remove(this.halo)
+        this.halo.material.dispose()
+        halo.release()
+
         this.object.traverse((obj) => {
             const mesh = obj as THREE.Mesh
             if (mesh.geometry && typeof mesh.geometry.dispose === 'function') {
@@ -239,6 +298,36 @@ export class Target {
         })
     }
 }
+
+/** Halo quad + soft ring-shaped gradient, shared by every target. */
+const halo = sharedResource(() => {
+    const size = 256
+    const canvas = document.createElement('canvas')
+    canvas.width = canvas.height = size
+    const ctx = canvas.getContext('2d')!
+    const c = size / 2
+    const peak = TIER_RING_RADIUS / HALO_HALF_SIZE
+    const grad = ctx.createRadialGradient(c, c, 0, c, c, c)
+    grad.addColorStop(0, 'rgba(255,255,255,0.03)')
+    grad.addColorStop(peak - 0.25, 'rgba(255,255,255,0.03)')
+    grad.addColorStop(peak - 0.1, 'rgba(255,255,255,0.3)')
+    grad.addColorStop(peak, 'rgba(255,255,255,1)')
+    grad.addColorStop(peak + 0.1, 'rgba(255,255,255,0.35)')
+    grad.addColorStop(1, 'rgba(255,255,255,0)')
+    ctx.fillStyle = grad
+    ctx.fillRect(0, 0, size, size)
+    const texture = new THREE.CanvasTexture(canvas)
+    texture.colorSpace = THREE.SRGBColorSpace
+    const geometry = new THREE.PlaneGeometry(HALO_HALF_SIZE * 2, HALO_HALF_SIZE * 2)
+    return {
+        texture,
+        geometry,
+        dispose(): void {
+            texture.dispose()
+            geometry.dispose()
+        },
+    }
+})
 
 function scoreForRadius(r: number): number {
     for (const b of BANDS) {
