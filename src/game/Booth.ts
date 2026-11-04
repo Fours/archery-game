@@ -1,6 +1,6 @@
 import * as THREE from 'three'
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js'
-import { createAwningTexture, createBoardTexture, createFabricTexture, createWoodTexture, setWorldUVs } from './materials'
+import { createAwningTexture, createFabricTexture, createGrimyPanelTexture, createGrimyRailTexture, createWoodTexture, setWorldUVs } from './materials'
 
 // Booth footprint. The player stands at z = 0; the booth opens toward +Z.
 // FRONT_Z is the front facade (counter and front posts), BACK_Z is the back wall.
@@ -57,9 +57,11 @@ const BUNTING_COLORS = [RED, WHITE, BLUE, YELLOW]
 export class Booth {
     readonly group: THREE.Group
     private woodTex: THREE.Texture
-    private boardTex: THREE.Texture
     private fabricTex: THREE.Texture
     private awningTex: THREE.Texture | null = null
+    // Grimy counter textures, fitted per surface; built in addCounter.
+    private railGrimeTex: THREE.Texture | null = null
+    private panelGrimeTex: THREE.Texture | null = null
 
     constructor() {
         this.group = new THREE.Group()
@@ -67,7 +69,6 @@ export class Booth {
         // Both textures are near-white tint masks shared by the light/dark
         // variants; box geometries get world-meter UVs so density stays uniform.
         this.woodTex = createWoodTexture()
-        this.boardTex = createBoardTexture()
         this.fabricTex = createFabricTexture()
 
         const woodMat = new THREE.MeshStandardMaterial({
@@ -79,15 +80,6 @@ export class Booth {
             color: DARK_WOOD,
             map: this.woodTex,
             roughness: 0.85,
-        })
-        // One solid board with a light clearcoat, so the sun and bulbs leave a
-        // soft varnish sheen along the rail.
-        const railMat = new THREE.MeshPhysicalMaterial({
-            color: RAIL_WOOD,
-            map: this.boardTex,
-            roughness: 0.65,
-            clearcoat: 0.25,
-            clearcoatRoughness: 0.55,
         })
         const redMat = new THREE.MeshStandardMaterial({
             color: RED,
@@ -113,7 +105,7 @@ export class Booth {
 
         this.addPosts(darkWoodMat)
         this.addWalls(woodMat)
-        this.addCounter(railMat, darkWoodMat)
+        this.addCounter(darkWoodMat)
         this.addRoof()
         this.addValance(redMat, whiteMat)
         this.addFlagpoles(darkWoodMat)
@@ -159,12 +151,32 @@ export class Booth {
         this.group.add(back)
     }
 
-    private addCounter(railMat: THREE.Material, darkMat: THREE.Material): void {
+    private addCounter(darkMat: THREE.Material): void {
         const innerWidth = HALF_WIDTH * 2 - POST_THICK
 
         // A single thick board spanning post to post. setWorldUVs maps U to X
         // on its top and front faces, so the board texture's grain runs left/right.
         const topDepth = COUNTER_DEPTH + COUNTER_LIP
+
+        // The rail top and front panel are the surfaces the player stares at, so
+        // they get their own non-tiling grimy masks fitted to each surface (dirt
+        // at real positions, no repeat) instead of the showroom-clean wood. The
+        // rail keeps only a trace of clearcoat so the varnish reads worn.
+        this.railGrimeTex = createGrimyRailTexture(innerWidth, topDepth)
+        this.panelGrimeTex = createGrimyPanelTexture(innerWidth, COUNTER_TOP_Y)
+        const railMat = new THREE.MeshPhysicalMaterial({
+            color: RAIL_WOOD,
+            map: this.railGrimeTex,
+            roughness: 0.74,
+            clearcoat: 0.08,
+            clearcoatRoughness: 0.7,
+        })
+        const panelMat = new THREE.MeshStandardMaterial({
+            color: DARK_WOOD,
+            map: this.panelGrimeTex,
+            roughness: 0.9,
+        })
+
         const topGeo = new RoundedBoxGeometry(
             innerWidth,
             COUNTER_TOP_THICK,
@@ -186,7 +198,7 @@ export class Booth {
         const panelThick = 0.05
         const frontGeo = new THREE.BoxGeometry(innerWidth, COUNTER_TOP_Y, panelThick)
         setWorldUVs(frontGeo)
-        const front = new THREE.Mesh(frontGeo, darkMat)
+        const front = new THREE.Mesh(frontGeo, panelMat)
         front.position.set(0, COUNTER_TOP_Y / 2, FRONT_Z + panelThick / 2)
         front.receiveShadow = true
         this.group.add(front)
@@ -421,9 +433,10 @@ export class Booth {
     dispose(): void {
         // Material.dispose() doesn't free maps, so release the shared textures here.
         this.woodTex.dispose()
-        this.boardTex.dispose()
         this.fabricTex.dispose()
         this.awningTex?.dispose()
+        this.railGrimeTex?.dispose()
+        this.panelGrimeTex?.dispose()
         this.group.traverse((obj) => {
             const mesh = obj as THREE.Mesh
             if (mesh.geometry && typeof mesh.geometry.dispose === 'function') {

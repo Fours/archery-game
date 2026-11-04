@@ -84,6 +84,33 @@ function finishTexture(canvas: HTMLCanvasElement, metersPerTile: number): THREE.
     return tex
 }
 
+/** A single soft radial blotch (no tile wrapping) — for non-tiling fitted canvases. */
+function blob(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, color: string): void {
+    const g = ctx.createRadialGradient(x, y, 0, x, y, r)
+    g.addColorStop(0, color)
+    g.addColorStop(1, 'rgba(0, 0, 0, 0)')
+    ctx.fillStyle = g
+    ctx.fillRect(x - r, y - r, r * 2, r * 2)
+}
+
+/**
+ * Finish a non-tiling texture fitted to a surface of `widthM` × `heightM`: one
+ * canvas spans the whole surface once (clamped, not wrapped), with repeat+offset
+ * set so world-meter UVs (setWorldUVs on a geometry centered at the origin) land
+ * the surface over the full canvas. Lets grime be authored at real positions
+ * (bottom = bottom, front edge = front edge) without any tiling repeat.
+ */
+function fitTexture(canvas: HTMLCanvasElement, widthM: number, heightM: number): THREE.CanvasTexture {
+    const tex = new THREE.CanvasTexture(canvas)
+    tex.wrapS = THREE.ClampToEdgeWrapping
+    tex.wrapT = THREE.ClampToEdgeWrapping
+    tex.repeat.set(1 / widthM, 1 / heightM)
+    tex.offset.set(0.5, 0.5)
+    tex.colorSpace = THREE.SRGBColorSpace
+    tex.anisotropy = ANISOTROPY
+    return tex
+}
+
 /** Draw a soft radial blotch, wrapped across tile edges so the texture stays seamless. */
 function softBlotch(
     ctx: CanvasRenderingContext2D,
@@ -121,10 +148,29 @@ export function createWoodTexture(): THREE.CanvasTexture {
     const pxPerMeter = 512
     const width = tileWidthM * pxPerMeter
     const size = tileHeightM * pxPerMeter
-    const planks = 8
-    const pw = width / planks
     const [canvas, ctx] = makeCanvas(width, size)
 
+    paintPlankField(ctx, width, size, 8, pxPerMeter)
+
+    const tex = finishTexture(canvas, tileWidthM)
+    tex.repeat.set(1 / tileWidthM, 1 / tileHeightM)
+    return tex
+}
+
+/**
+ * Paint a field of vertical plank columns across `width` × `size`, each column a
+ * run of boards with staggered butt joints and its own tone/grain/knots, with
+ * dark seams between columns. Columns wrap vertically (seamless in V). Shared by
+ * the booth-wall plank mask and the grimy counter panel.
+ */
+function paintPlankField(
+    ctx: CanvasRenderingContext2D,
+    width: number,
+    size: number,
+    planks: number,
+    pxPerMeter: number,
+): void {
+    const pw = width / planks
     for (let p = 0; p < planks; p++) {
         const x0 = p * pw
 
@@ -173,10 +219,6 @@ export function createWoodTexture(): THREE.CanvasTexture {
         ctx.fillStyle = 'rgba(255, 245, 225, 0.35)'
         ctx.fillRect(x0 + 4, 0, 2, size)
     }
-
-    const tex = finishTexture(canvas, tileWidthM)
-    tex.repeat.set(1 / tileWidthM, 1 / tileHeightM)
-    return tex
 }
 
 /** One board of a plank column: base tone, end-to-end shading, grain, knots. */
@@ -395,6 +437,197 @@ export function createBoardTexture(): THREE.CanvasTexture {
     }
 
     return finishTexture(canvas, 1.0)
+}
+
+/**
+ * Non-tiling grimy hardwood for the counter rail TOP, fitted to the surface so
+ * wear lands at real positions and never repeats. Grain runs along U (the rail's
+ * length). On top of a plain board base it bakes: an overall grease/dust veil, a
+ * dirtier band along the front edge (v→1, the player-facing lip) where sleeves
+ * and elbows rub, a few cup-ring stains, scattered smudges and scratches — so
+ * the varnish reads worn and lived-in. Tint mask: material `color` supplies hue.
+ * Map with setWorldUVs; the returned texture's repeat/offset fit the surface.
+ */
+export function createGrimyRailTexture(widthM: number, depthM: number): THREE.CanvasTexture {
+    const px = 256
+    const w = Math.round(widthM * px)
+    const h = Math.round(depthM * px)
+    const [canvas, ctx] = makeCanvas(w, h)
+
+    // --- plain board base: warm near-white, grain running along the length ---
+    ctx.fillStyle = 'rgb(230, 219, 205)'
+    ctx.fillRect(0, 0, w, h)
+    for (let i = 0; i < 14; i++) {
+        const y = Math.random() * h
+        const hh = 5 + Math.random() * 20
+        const g = ctx.createLinearGradient(0, y - hh, 0, y + hh)
+        const a = 0.06 + Math.random() * 0.12
+        const tone = Math.random() < 0.5 ? `rgba(120, 80, 45, ${a})` : `rgba(255, 248, 235, ${a})`
+        g.addColorStop(0, 'rgba(0, 0, 0, 0)')
+        g.addColorStop(0.5, tone)
+        g.addColorStop(1, 'rgba(0, 0, 0, 0)')
+        ctx.fillStyle = g
+        ctx.fillRect(0, y - hh, w, hh * 2)
+    }
+    for (let i = 0; i < 220; i++) {
+        const y0 = Math.random() * h
+        const amp = 1 + Math.random() * 3
+        const freq = 0.004 + Math.random() * 0.01
+        const phase = Math.random() * Math.PI * 2
+        ctx.strokeStyle = `rgba(80, 48, 22, ${0.05 + Math.random() * 0.15})`
+        ctx.lineWidth = 0.8 + Math.random() * 1.6
+        ctx.beginPath()
+        for (let x = 0; x <= w; x += 6) {
+            const y = y0 + Math.sin(x * freq + phase) * amp
+            if (x === 0) ctx.moveTo(x, y)
+            else ctx.lineTo(x, y)
+        }
+        ctx.stroke()
+    }
+    for (let i = 0; i < Math.round(w * h * 0.004); i++) {
+        ctx.fillStyle = `rgba(60, 35, 15, ${0.06 + Math.random() * 0.1})`
+        ctx.fillRect(Math.random() * w, Math.random() * h, 2 + Math.random() * 5, 1)
+    }
+
+    // --- grime ---
+    // Overall grease/dust veil, slightly cool so the warm varnish muddies.
+    ctx.fillStyle = 'rgba(70, 72, 66, 0.13)'
+    ctx.fillRect(0, 0, w, h)
+
+    // Uneven grimy patches washing along the length, so the whole top reads
+    // unevenly dirtied rather than uniformly tinted.
+    for (let i = 0; i < Math.round(widthM * 2); i++) {
+        blob(ctx, Math.random() * w, Math.random() * h, (0.4 + Math.random() * 0.9) * px, `rgba(48, 44, 34, ${0.08 + Math.random() * 0.1})`)
+    }
+
+    // Front-edge wear: a greasier, dirtier band along the player-facing lip.
+    const edge = ctx.createLinearGradient(0, 0, 0, h * 0.55)
+    edge.addColorStop(0, 'rgba(42, 37, 28, 0.46)')
+    edge.addColorStop(0.5, 'rgba(42, 37, 28, 0.16)')
+    edge.addColorStop(1, 'rgba(0, 0, 0, 0)')
+    ctx.fillStyle = edge
+    ctx.fillRect(0, 0, w, h * 0.55)
+    for (let i = 0; i < Math.round(widthM * 9); i++) {
+        blob(ctx, Math.random() * w, Math.random() * h * 0.18, 10 + Math.random() * 46, 'rgba(38, 32, 24, 0.24)')
+    }
+
+    // Cup-ring stains: a classic bar-top tell.
+    const rings = Math.max(3, Math.round(widthM * 0.7))
+    for (let i = 0; i < rings; i++) {
+        const cx = Math.random() * w
+        const cy = h * (0.3 + Math.random() * 0.55)
+        const rr = (0.03 + Math.random() * 0.025) * px
+        ctx.strokeStyle = `rgba(45, 32, 18, ${0.18 + Math.random() * 0.14})`
+        ctx.lineWidth = 2 + Math.random() * 2
+        ctx.beginPath()
+        ctx.ellipse(cx, cy, rr, rr * 0.9, 0, 0, Math.PI * 2)
+        ctx.stroke()
+        ctx.fillStyle = 'rgba(50, 36, 20, 0.05)'
+        ctx.beginPath()
+        ctx.ellipse(cx, cy, rr, rr * 0.9, 0, 0, Math.PI * 2)
+        ctx.fill()
+    }
+
+    // Scattered grime smudges.
+    for (let i = 0; i < Math.round(widthM * 5); i++) {
+        blob(ctx, Math.random() * w, Math.random() * h, 18 + Math.random() * 60, `rgba(55, 50, 40, ${0.06 + Math.random() * 0.1})`)
+    }
+
+    // Scratches and scuffs along the grain (some dark, some worn-pale).
+    for (let i = 0; i < Math.round(widthM * 3); i++) {
+        const x0 = Math.random() * w
+        const y0 = Math.random() * h
+        const len = (0.1 + Math.random() * 0.5) * px
+        ctx.strokeStyle = Math.random() < 0.6 ? 'rgba(35, 25, 14, 0.28)' : 'rgba(255, 248, 235, 0.22)'
+        ctx.lineWidth = 0.8 + Math.random() * 1.2
+        ctx.beginPath()
+        ctx.moveTo(x0, y0)
+        ctx.lineTo(x0 + len, y0 + (Math.random() - 0.5) * 6)
+        ctx.stroke()
+    }
+
+    return fitTexture(canvas, widthM, depthM)
+}
+
+/**
+ * Non-tiling grimy plank cladding for the counter FRONT panel (the wall facing
+ * the player), fitted to the surface. On vertical boards it bakes: a dust veil,
+ * ground-splash dirt kicked up along the bottom edge (v→0) with a ragged spatter
+ * margin, vertical drip streaks off the rail above, hand/lean smudges around
+ * waist height, and low scuffs — so the panel looks used, not freshly built.
+ * Tint mask: material `color` supplies hue. Map with setWorldUVs.
+ */
+export function createGrimyPanelTexture(widthM: number, heightM: number): THREE.CanvasTexture {
+    const px = 240
+    const w = Math.round(widthM * px)
+    const h = Math.round(heightM * px)
+    const [canvas, ctx] = makeCanvas(w, h)
+
+    // Base: vertical plank cladding (~0.2 m boards), same mask palette as walls.
+    const planks = Math.max(1, Math.round(widthM / 0.2))
+    paintPlankField(ctx, w, h, planks, px)
+
+    // --- grime ---
+    // Dust veil.
+    ctx.fillStyle = 'rgba(68, 70, 64, 0.13)'
+    ctx.fillRect(0, 0, w, h)
+
+    // Uneven grimy patches over the whole panel so it darkens unevenly.
+    for (let i = 0; i < Math.round(widthM * 3); i++) {
+        blob(ctx, Math.random() * w, Math.random() * h, (0.3 + Math.random() * 0.8) * px, `rgba(46, 42, 32, ${0.07 + Math.random() * 0.1})`)
+    }
+
+    // Ground splash: dirt along the bottom edge (canvas bottom = panel bottom),
+    // fading up, with spatter dots rising out of it.
+    const splashH = h * 0.42
+    const splash = ctx.createLinearGradient(0, h, 0, h - splashH)
+    splash.addColorStop(0, 'rgba(48, 38, 26, 0.50)')
+    splash.addColorStop(0.35, 'rgba(52, 42, 28, 0.26)')
+    splash.addColorStop(1, 'rgba(0, 0, 0, 0)')
+    ctx.fillStyle = splash
+    ctx.fillRect(0, h - splashH, w, splashH)
+    for (let i = 0; i < Math.round(widthM * 30); i++) {
+        const x = Math.random() * w
+        // Bias dots toward the bottom (two randoms → quadratic falloff upward).
+        const y = h - Math.random() * Math.random() * splashH * 1.1
+        const r = 1 + Math.random() * 5
+        ctx.fillStyle = `rgba(42, 33, 22, ${0.15 + Math.random() * 0.25})`
+        ctx.beginPath()
+        ctx.arc(x, y, r, 0, Math.PI * 2)
+        ctx.fill()
+    }
+
+    // Vertical drip streaks from the top edge (spills/rain off the rail above).
+    for (let i = 0; i < Math.round(widthM * 3.5); i++) {
+        const x = Math.random() * w
+        const len = h * (0.3 + Math.random() * 0.6)
+        const ww = 2 + Math.random() * 7
+        const g = ctx.createLinearGradient(x, 0, x, len)
+        g.addColorStop(0, 'rgba(38, 30, 18, 0.30)')
+        g.addColorStop(1, 'rgba(38, 30, 18, 0)')
+        ctx.fillStyle = g
+        ctx.fillRect(x - ww / 2, 0, ww, len)
+    }
+
+    // Hand/lean smudges around waist height (upper-middle of the panel).
+    for (let i = 0; i < Math.round(widthM * 4); i++) {
+        blob(ctx, Math.random() * w, h * (0.12 + Math.random() * 0.45), 22 + Math.random() * 75, `rgba(48, 44, 34, ${0.07 + Math.random() * 0.11})`)
+    }
+
+    // Low scuffs (shoe/knee marks) down in the splash zone.
+    for (let i = 0; i < Math.round(widthM * 4); i++) {
+        const x0 = Math.random() * w
+        const y0 = h - Math.random() * splashH
+        const len = (0.05 + Math.random() * 0.2) * px
+        ctx.strokeStyle = `rgba(30, 24, 15, ${0.2 + Math.random() * 0.15})`
+        ctx.lineWidth = 1 + Math.random() * 2.5
+        ctx.beginPath()
+        ctx.moveTo(x0, y0)
+        ctx.lineTo(x0 + len * (Math.random() - 0.5) * 2, y0 + (Math.random() - 0.5) * 8)
+        ctx.stroke()
+    }
+
+    return fitTexture(canvas, widthM, heightM)
 }
 
 /**
