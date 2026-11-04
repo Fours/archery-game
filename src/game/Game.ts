@@ -13,7 +13,7 @@ const MIN_ARROW_SPEED = 18
 const MAX_ARROW_SPEED = 65
 const MOUSE_SENSITIVITY = 0.0022
 const MAX_PITCH = Math.PI / 2 - 0.001
-const ROUND_DURATION = 120
+export const ROUND_DURATION = 120
 const EXPOSURE = 1.15
 
 type LockListener = (locked: boolean) => void

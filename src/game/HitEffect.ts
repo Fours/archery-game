@@ -133,51 +133,81 @@ function disposeMaterial(mat: THREE.Material): void {
     mat.dispose()
 }
 
+/** Matches the HUD: Bungee numerals, gold gradient, dark-wood outline and drop shadow. */
+const FONT_FAMILY = "'Bungee', Impact, system-ui, sans-serif"
+const WOOD_DARK = '#1f0e07'
+const CANVAS_W = 512
+const CANVAS_H = 256
+
+type TextStyle = { hi: string; mid: string; lo: string; glow: string }
+
+const GOLD: TextStyle = { hi: '#fff4cf', mid: '#f0c75a', lo: '#b9832a', glow: 'rgba(240, 199, 90, 0.85)' }
+/** Multiplier colors per tier, the same as the HUD's "+N ×M" popup. */
+const MULTIPLIER_STYLE: Record<number, TextStyle> = {
+    2: { hi: '#eef4ff', mid: '#8ab8ff', lo: '#2c6ee0', glow: 'rgba(44, 110, 224, 0.95)' },
+    3: { hi: '#f7ecff', mid: '#d9a6ff', lo: '#8e3ad1', glow: 'rgba(142, 58, 209, 0.95)' },
+}
+
+// The HUD already uses Bungee, but make sure it's loaded before the first sprite is drawn.
+void document.fonts?.load(`100px ${FONT_FAMILY}`)
+
 function makeScoreSprite(score: number): THREE.Sprite {
-    const canvas = document.createElement('canvas')
-    canvas.width = 256
-    canvas.height = 128
-    const ctx = canvas.getContext('2d')
-    if (!ctx) throw new Error('2D canvas context unavailable')
-
-    ctx.font = 'bold 84px system-ui, -apple-system, sans-serif'
-    ctx.textAlign = 'center'
-    ctx.textBaseline = 'middle'
-    ctx.lineWidth = 10
-    ctx.strokeStyle = 'rgba(0, 0, 0, 0.9)'
-    ctx.fillStyle = '#ffd84a'
-    const text = `+${score}`
-    ctx.strokeText(text, 128, 64)
-    ctx.fillText(text, 128, 64)
-
-    const tex = new THREE.CanvasTexture(canvas)
-    tex.colorSpace = THREE.SRGBColorSpace
-    const mat = new THREE.SpriteMaterial({
-        map: tex,
-        transparent: true,
-        depthWrite: false,
-    })
-    const sprite = new THREE.Sprite(mat)
+    const sprite = makeTextSprite(`+${score}`, 130, GOLD)
     sprite.scale.set(1.7, 0.85, 1)
     return sprite
 }
 
 function makeMultiplierSprite(multiplier: number): THREE.Sprite {
+    const sprite = makeTextSprite(`×${multiplier}`, 130, MULTIPLIER_STYLE[multiplier] ?? GOLD)
+    sprite.scale.set(1.1, 0.55, 1)
+    return sprite
+}
+
+function makeTextSprite(text: string, fontPx: number, style: TextStyle): THREE.Sprite {
     const canvas = document.createElement('canvas')
-    canvas.width = 256
-    canvas.height = 128
+    canvas.width = CANVAS_W
+    canvas.height = CANVAS_H
     const ctx = canvas.getContext('2d')
     if (!ctx) throw new Error('2D canvas context unavailable')
 
-    ctx.font = 'bold 72px system-ui, -apple-system, sans-serif'
+    // Shrink to fit so long scores never clip at the canvas edge (leaves room for the glow).
+    let px = fontPx
+    ctx.font = `${px}px ${FONT_FAMILY}`
+    while (ctx.measureText(text).width > CANVAS_W - 80 && px > 40) {
+        px -= 6
+        ctx.font = `${px}px ${FONT_FAMILY}`
+    }
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
-    ctx.lineWidth = 9
-    ctx.strokeStyle = 'rgba(0, 0, 0, 0.9)'
-    ctx.fillStyle = '#ffffff'
-    const text = `${multiplier}x`
-    ctx.strokeText(text, 128, 64)
-    ctx.fillText(text, 128, 64)
+    ctx.lineJoin = 'round'
+    const x = CANVAS_W / 2
+    const y = CANVAS_H / 2
+    const outline = Math.max(6, px * 0.08)
+    const drop = px * 0.07
+
+    // Soft colored glow behind everything.
+    ctx.save()
+    ctx.shadowColor = style.glow
+    ctx.shadowBlur = px * 0.25
+    ctx.fillStyle = style.glow
+    ctx.fillText(text, x, y)
+    ctx.restore()
+
+    // Hard dark drop shadow, then the dark outline.
+    ctx.fillStyle = WOOD_DARK
+    ctx.strokeStyle = WOOD_DARK
+    ctx.lineWidth = outline
+    ctx.strokeText(text, x, y + drop)
+    ctx.fillText(text, x, y + drop)
+    ctx.strokeText(text, x, y)
+
+    // Vertical gradient fill, light at the top.
+    const gradient = ctx.createLinearGradient(0, y - px * 0.5, 0, y + px * 0.5)
+    gradient.addColorStop(0.1, style.hi)
+    gradient.addColorStop(0.55, style.mid)
+    gradient.addColorStop(0.95, style.lo)
+    ctx.fillStyle = gradient
+    ctx.fillText(text, x, y)
 
     const tex = new THREE.CanvasTexture(canvas)
     tex.colorSpace = THREE.SRGBColorSpace
@@ -185,8 +215,8 @@ function makeMultiplierSprite(multiplier: number): THREE.Sprite {
         map: tex,
         transparent: true,
         depthWrite: false,
+        // Skip ACES so the colors match the CSS HUD instead of washing out toward white.
+        toneMapped: false,
     })
-    const sprite = new THREE.Sprite(mat)
-    sprite.scale.set(1.1, 0.55, 1)
-    return sprite
+    return new THREE.Sprite(mat)
 }

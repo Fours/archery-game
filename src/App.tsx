@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import './App.css'
 import { Game } from './game/Game'
+import { Hud } from './Hud'
 import logo from "./assets/archery-blitz-logo.png"
 
 function App() {
@@ -59,8 +60,12 @@ function App() {
                     </div>
                 </div>
             )}
-            <div className="timer">TIME LEFT: {timeLeft}</div>
-            <div className="score">SCORE: {score}</div>
+            <Hud
+                score={score}
+                timeLeft={timeLeft}
+                locked={locked}
+                gameOver={gameOver}
+            />
             {!gameOver && <div className="crosshair" />}
         </div>
     )
