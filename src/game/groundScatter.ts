@@ -18,6 +18,8 @@ const FAR_SCALE_DISTANCE = 60
 export type GroundPoint = {
     x: number
     z: number
+    /** Distance from the player, meters (0 for the booth interior). */
+    distance: number
     /** Extra scale for distant instances (1 within the near radius). */
     distanceScale: number
 }
@@ -29,6 +31,7 @@ export function scatterBoothInterior(count: number): GroundPoint[] {
         points.push({
             x: THREE.MathUtils.lerp(-HALF_WIDTH + 0.3, HALF_WIDTH - 0.3, Math.random()),
             z: THREE.MathUtils.lerp(BACK_Z + 0.3, FRONT_Z - 0.1, Math.random()),
+            distance: 0,
             distanceScale: 1,
         })
     }
@@ -38,17 +41,18 @@ export function scatterBoothInterior(count: number): GroundPoint[] {
 /**
  * Scatter points over the open field around the player at `density` per m²
  * (near the player), skipping the player's feet and the booth footprint.
+ * `radius` cuts the field short for detail only worth drawing up close.
  */
-export function scatterField(density: number): GroundPoint[] {
-    const r0 = FIELD_NEAR_RADIUS
-    const expected = density * (Math.PI * r0 * r0 + 2 * Math.PI * r0 * (FIELD_RADIUS - r0))
+export function scatterField(density: number, radius: number = FIELD_RADIUS): GroundPoint[] {
+    const r0 = Math.min(FIELD_NEAR_RADIUS, radius)
+    const expected = density * (Math.PI * r0 * r0 + 2 * Math.PI * r0 * (radius - r0))
     const count = Math.round(expected)
     const points: GroundPoint[] = []
     let tries = 0
     while (points.length < count && tries < count * 20) {
         tries++
         // Uniform in the disk, then thin with probability r0 / r.
-        const r = FIELD_RADIUS * Math.sqrt(Math.random())
+        const r = radius * Math.sqrt(Math.random())
         if (r > r0 && Math.random() > r0 / r) continue
         if (r < PLAYER_EXCLUSION_RADIUS) continue
         const theta = Math.random() * Math.PI * 2
@@ -59,7 +63,7 @@ export function scatterField(density: number): GroundPoint[] {
             z < FRONT_Z + BOOTH_MARGIN &&
             z > BACK_Z - BOOTH_MARGIN
         if (inBooth) continue
-        points.push({ x, z, distanceScale: 1 + Math.max(0, r - r0) / FAR_SCALE_DISTANCE })
+        points.push({ x, z, distance: r, distanceScale: 1 + Math.max(0, r - r0) / FAR_SCALE_DISTANCE })
     }
     return points
 }

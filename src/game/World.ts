@@ -9,6 +9,7 @@ import { KitScenery } from './KitScenery'
 import { Plants } from './Plants'
 import { Sky, SKY_HORIZON } from './Sky'
 import { Trees } from './Trees'
+import type { WindTime } from './wind'
 
 // Late-afternoon key light: warm, low enough to rake in under the booth roof
 // from behind the player.
@@ -43,6 +44,8 @@ export class World {
     private sky: Sky
     private grassTexture: THREE.Texture
     private ground: THREE.Mesh
+    // Shared clock for every wind-swayed material (trees, grass, flowers).
+    private windTime: WindTime = { value: 0 }
 
     constructor(scene: THREE.Scene, renderer: THREE.WebGLRenderer) {
         this.scene = scene
@@ -98,13 +101,13 @@ export class World {
         this.barrels = new Barrels()
         this.group.add(this.barrels.group)
 
-        this.trees = new Trees()
+        this.trees = new Trees(this.windTime)
         this.group.add(this.trees.group)
 
-        this.flowers = new Flowers()
+        this.flowers = new Flowers(this.windTime)
         this.group.add(this.flowers.group)
 
-        this.plants = new Plants()
+        this.plants = new Plants(this.windTime)
         this.group.add(this.plants.group)
 
         this.kitScenery = new KitScenery()
@@ -113,9 +116,9 @@ export class World {
         scene.add(this.group)
     }
 
-    /** Ambient animation (tree wind); runs every frame, paused or not. */
+    /** Ambient animation (wind); runs every frame, paused or not. */
     update(dt: number): void {
-        this.trees.update(dt)
+        this.windTime.value += dt
     }
 
     dispose(): void {

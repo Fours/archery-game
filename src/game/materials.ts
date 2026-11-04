@@ -498,53 +498,92 @@ export function createAwningTexture(widthM: number, depthM: number, minZ: number
 }
 
 /**
- * Painterly lawn: large soft light/dark patches under short directional blade
- * strokes. Fully colored (not a tint mask). `metersPerTile` sets world scale.
+ * Painterly lawn matched to the grass tufts' palette (dark roots, yellow-green
+ * tips): broad lush/sun-dried patches, darker clumps where tufts would cast
+ * contact shadow, then thousands of small tapered blade flecks leaning every
+ * which way and a sprinkle of clover. Strokes are kept small and low-contrast
+ * so at grazing angles the lawn reads as soft texture rather than streaks.
+ * Fully colored (not a tint mask); seamless. `metersPerTile` sets world scale.
  */
 export function createGrassTexture(metersPerTile: number): THREE.CanvasTexture {
-    const size = 512
+    const size = 1024
     const [canvas, ctx] = makeCanvas(size)
 
-    ctx.fillStyle = '#5c9a38'
+    ctx.fillStyle = '#4e8a30'
     ctx.fillRect(0, 0, size, size)
 
-    // Broad patches give the lawn a hand-painted, uneven look at distance.
     const patchColors = [
-        'rgba(130, 185, 65, 0.45)',
-        'rgba(165, 200, 80, 0.35)',
-        'rgba(40, 90, 35, 0.35)',
-        'rgba(90, 130, 40, 0.30)',
+        'rgba(120, 175, 60, 0.40)',
+        'rgba(160, 190, 80, 0.30)',
+        'rgba(35, 80, 30, 0.35)',
+        'rgba(100, 140, 45, 0.30)',
     ]
-    for (let i = 0; i < 40; i++) {
-        softBlotch(
-            ctx,
-            size,
-            Math.random() * size,
-            Math.random() * size,
-            40 + Math.random() * 110,
-            patchColors[i % patchColors.length],
-        )
+    for (let i = 0; i < 50; i++) {
+        softBlotch(ctx, size, Math.random() * size, Math.random() * size,
+            80 + Math.random() * 220, patchColors[i % patchColors.length])
+    }
+    // Contact-shadow clumps.
+    for (let i = 0; i < 160; i++) {
+        softBlotch(ctx, size, Math.random() * size, Math.random() * size,
+            10 + Math.random() * 24, 'rgba(25, 60, 20, 0.35)')
     }
 
-    // Blade strokes: short, mostly upright, light tips over darker bases.
-    for (let i = 0; i < 9000; i++) {
-        const x = Math.random() * size
-        const y = Math.random() * size
-        const len = 3 + Math.random() * 6
-        const lean = (Math.random() - 0.5) * 3
-        const light = Math.random() < 0.55
-        const g = light ? 150 + Math.random() * 70 : 80 + Math.random() * 40
-        const r = light ? 90 + Math.random() * 50 : 40 + Math.random() * 25
-        const b = light ? 45 + Math.random() * 30 : 25 + Math.random() * 20
-        ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${0.35 + Math.random() * 0.4})`
-        ctx.lineWidth = 1 + Math.random()
-        ctx.beginPath()
-        ctx.moveTo(x, y)
-        ctx.lineTo(x + lean, y - len)
-        ctx.stroke()
+    // Blade flecks: tapered, slightly curved, any direction, dark roots under
+    // lighter tips (same ramp as the tufts).
+    for (let i = 0; i < 26000; i++) {
+        const light = Math.random() < 0.5
+        const r = light ? 110 + Math.random() * 60 : 40 + Math.random() * 25
+        const g = light ? 160 + Math.random() * 55 : 85 + Math.random() * 35
+        const b = light ? 50 + Math.random() * 30 : 25 + Math.random() * 20
+        const color = `rgba(${r}, ${g}, ${b}, ${0.3 + Math.random() * 0.35})`
+        const len = 5 + Math.random() * 9
+        const width = 1.2 + Math.random() * 1.6
+        const angle = Math.random() * Math.PI * 2
+        const bend = (Math.random() - 0.5) * len * 0.5
+        wrapDraw(size, Math.random() * size, Math.random() * size, len, (x, y) => {
+            ctx.save()
+            ctx.translate(x, y)
+            ctx.rotate(angle)
+            ctx.beginPath()
+            ctx.moveTo(-width / 2, 0)
+            ctx.quadraticCurveTo(bend * 0.5, -len * 0.5, bend, -len)
+            ctx.quadraticCurveTo(bend * 0.5 + width * 0.3, -len * 0.5, width / 2, 0)
+            ctx.closePath()
+            ctx.fillStyle = color
+            ctx.fill()
+            ctx.restore()
+        })
+    }
+
+    // Clover: three-lobed leaves in a slightly bluer green.
+    for (let i = 0; i < 220; i++) {
+        const lobe = 2.5 + Math.random() * 2
+        const angle = Math.random() * Math.PI * 2
+        const shade = Math.random() < 0.5 ? 'rgba(70, 135, 55, 0.8)' : 'rgba(95, 160, 70, 0.8)'
+        wrapDraw(size, Math.random() * size, Math.random() * size, lobe * 2, (x, y) => {
+            ctx.fillStyle = shade
+            for (let k = 0; k < 3; k++) {
+                const a = angle + (k * Math.PI * 2) / 3
+                ctx.beginPath()
+                ctx.arc(x + Math.cos(a) * lobe, y + Math.sin(a) * lobe, lobe, 0, Math.PI * 2)
+                ctx.fill()
+            }
+        })
     }
 
     return finishTexture(canvas, metersPerTile)
+}
+
+/** Call `draw` at (x, y) and at every wrapped copy within `reach` of a tile edge. */
+function wrapDraw(size: number, x: number, y: number, reach: number, draw: (x: number, y: number) => void): void {
+    for (const dx of [-size, 0, size]) {
+        for (const dy of [-size, 0, size]) {
+            const cx = x + dx
+            const cy = y + dy
+            if (cx + reach < 0 || cx - reach > size || cy + reach < 0 || cy - reach > size) continue
+            draw(cx, cy)
+        }
+    }
 }
 
 /**
