@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import './App.css'
-import { Game } from './game/Game'
+import { Game, ROUND_DURATION } from './game/Game'
 import { Hud } from './Hud'
-import logo from "./assets/archery-blitz-logo.png"
+import { GameOverScreen, StartScreen } from './Screens'
 
 function App() {
     const containerRef = useRef<HTMLDivElement>(null)
@@ -10,7 +10,7 @@ function App() {
     const [locked, setLocked] = useState(false)
     const [score, setScore] = useState(0)
     const [gameOver, setGameOver] = useState(false)
-    const [timeLeft, setTimeLeft] = useState(120)
+    const [timeLeft, setTimeLeft] = useState(ROUND_DURATION)
 
     useEffect(() => {
         if (!containerRef.current) return
@@ -31,35 +31,8 @@ function App() {
                 gameRef.current?.requestLock()
             }}
         >
-            {!locked && !gameOver && (
-                <div className="overlay">
-                    <div className="card">
-                        <img src={logo} />
-                        <p>Click to play</p>
-                        <p className="hint">
-                            Mouse to aim · Hold SPACE to draw the bow · Release to fire · ESC to free the cursor
-                        </p>
-                    </div>
-                </div>
-            )}
-            {gameOver && (
-                <div className="overlay">
-                    <div className="card game-over">
-                        <h1>Game Over</h1>
-                        <p className="final-score-label">Final Score</p>
-                        <p className="final-score">{score}</p>
-                        <button
-                            className="new-game"
-                            onClick={(e) => {
-                                e.stopPropagation()
-                                gameRef.current?.restart()
-                            }}
-                        >
-                            New Game
-                        </button>
-                    </div>
-                </div>
-            )}
+            {!locked && !gameOver && <StartScreen paused={timeLeft < ROUND_DURATION} />}
+            {gameOver && <GameOverScreen score={score} onNewGame={() => gameRef.current?.restart()} />}
             <Hud
                 score={score}
                 timeLeft={timeLeft}

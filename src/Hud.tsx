@@ -1,14 +1,12 @@
-import { useEffect, useRef, useState } from 'react'
 import { ROUND_DURATION } from './game/Game'
+import { ScoreDigits } from './ScoreDigits'
+import { useCountUp } from './useCountUp'
 
 /** Seconds left at which the timer turns amber, then red and starts ticking. */
 const WARN_TIME = 30
 const DANGER_TIME = 10
 /** Seconds left at which a big countdown appears in the middle of the screen. */
 const FINAL_COUNTDOWN = 5
-/** Score is shown zero-padded to this many digits, arcade style. */
-const SCORE_DIGITS = 6
-const COUNT_UP_MS = 450
 
 type HudProps = {
     score: number
@@ -19,8 +17,6 @@ type HudProps = {
 
 export function Hud({ score, timeLeft, locked, gameOver }: HudProps) {
     const shownScore = useCountUp(score)
-    const padded = String(shownScore).padStart(SCORE_DIGITS, '0')
-    const leadLength = shownScore === 0 ? SCORE_DIGITS - 1 : SCORE_DIGITS - String(shownScore).length
 
     const timerState = timeLeft <= DANGER_TIME ? 'danger' : timeLeft <= WARN_TIME ? 'warn' : ''
     const paused = !locked && !gameOver && timeLeft < ROUND_DURATION
@@ -30,7 +26,7 @@ export function Hud({ score, timeLeft, locked, gameOver }: HudProps) {
     return (
         <>
             <div className={`hud ${gameOver ? 'hud-hidden' : ''}`}>
-                <div className={`hud-panel timer ${timerState}`}>
+                <div className={`plaque hud-panel timer ${timerState}`}>
                     <span className="hud-label">{paused ? 'Paused' : 'Time'}</span>
                     <span
                         key={timerState === 'danger' ? timeLeft : 'steady'}
@@ -45,11 +41,10 @@ export function Hud({ score, timeLeft, locked, gameOver }: HudProps) {
                     </div>
                 </div>
 
-                <div className="hud-panel score">
+                <div className="plaque hud-panel score">
                     <span className="hud-label">Score</span>
                     <span key={score} className={`hud-value ${score > 0 ? 'pop' : ''}`}>
-                        <span className="lead">{padded.slice(0, leadLength)}</span>
-                        <span className="num">{padded.slice(leadLength)}</span>
+                        <ScoreDigits value={shownScore} />
                     </span>
                 </div>
             </div>
@@ -61,30 +56,4 @@ export function Hud({ score, timeLeft, locked, gameOver }: HudProps) {
             )}
         </>
     )
-}
-
-/** Animates the displayed value toward `target`; drops (e.g. a restart) snap instantly. */
-function useCountUp(target: number): number {
-    const [shown, setShown] = useState(target)
-    const shownRef = useRef(target)
-
-    useEffect(() => {
-        const from = shownRef.current
-        if (from === target) return
-        const duration = target < from ? 0 : COUNT_UP_MS
-        const start = performance.now()
-        let frame = 0
-        const step = (now: number) => {
-            const k = duration === 0 ? 1 : Math.min(1, (now - start) / duration)
-            const eased = 1 - Math.pow(1 - k, 3)
-            const value = Math.round(from + (target - from) * eased)
-            shownRef.current = value
-            setShown(value)
-            if (k < 1) frame = requestAnimationFrame(step)
-        }
-        frame = requestAnimationFrame(step)
-        return () => cancelAnimationFrame(frame)
-    }, [target])
-
-    return shown
 }

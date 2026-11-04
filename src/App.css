@@ -33,14 +33,41 @@ body,
     z-index: 10;
 }
 
-/* ---------- HUD ---------- */
+/* ---------- Shared look: gold-trimmed wood plaques ---------- */
 
-.hud {
+:root {
     --gold-hi: #fff4cf;
     --gold: #f0c75a;
     --gold-lo: #b9832a;
     --wood-hi: #4a2615;
     --wood-lo: #1f0e07;
+}
+
+/* Dark lacquered-wood panel, gold double border, a brass rivet in each corner.
+   --rivet sets the rivets' inset from the corner, --rivet-r their radius. */
+.plaque {
+    --rivet: 9px;
+    --rivet-r: 2px;
+    color: var(--gold-hi);
+    background:
+        radial-gradient(circle at var(--rivet) var(--rivet), var(--gold) 0 var(--rivet-r), transparent calc(var(--rivet-r) + 0.5px)),
+        radial-gradient(circle at calc(100% - var(--rivet)) var(--rivet), var(--gold) 0 var(--rivet-r), transparent calc(var(--rivet-r) + 0.5px)),
+        radial-gradient(circle at var(--rivet) calc(100% - var(--rivet)), var(--gold) 0 var(--rivet-r), transparent calc(var(--rivet-r) + 0.5px)),
+        radial-gradient(circle at calc(100% - var(--rivet)) calc(100% - var(--rivet)), var(--gold) 0 var(--rivet-r), transparent calc(var(--rivet-r) + 0.5px)),
+        linear-gradient(180deg, rgba(255, 255, 255, 0.1), transparent 40%),
+        linear-gradient(180deg, var(--wood-hi), var(--wood-lo));
+    border: 2px solid var(--gold);
+    border-radius: 6px;
+    box-shadow:
+        inset 0 0 0 3px var(--wood-lo),
+        inset 0 0 0 4px rgba(240, 199, 90, 0.45),
+        0 1px 0 rgba(255, 255, 255, 0.15),
+        0 8px 22px rgba(0, 0, 0, 0.45);
+}
+
+/* ---------- HUD ---------- */
+
+.hud {
     --hud-edge: clamp(12px, 2.5vh, 28px);
     position: absolute;
     inset: 0;
@@ -62,22 +89,6 @@ body,
     align-items: center;
     min-width: clamp(120px, 11vw, 190px);
     padding: clamp(6px, 0.8vh, 10px) clamp(16px, 1.6vw, 26px) clamp(8px, 1vh, 12px);
-    color: var(--gold-hi);
-    /* Rivets in the four corners, over a dark lacquered-wood panel. */
-    background:
-        radial-gradient(circle at 9px 9px, var(--gold) 0 2px, transparent 2.5px),
-        radial-gradient(circle at calc(100% - 9px) 9px, var(--gold) 0 2px, transparent 2.5px),
-        radial-gradient(circle at 9px calc(100% - 9px), var(--gold) 0 2px, transparent 2.5px),
-        radial-gradient(circle at calc(100% - 9px) calc(100% - 9px), var(--gold) 0 2px, transparent 2.5px),
-        linear-gradient(180deg, rgba(255, 255, 255, 0.1), transparent 40%),
-        linear-gradient(180deg, var(--wood-hi), var(--wood-lo));
-    border: 2px solid var(--gold);
-    border-radius: 6px;
-    box-shadow:
-        inset 0 0 0 3px var(--wood-lo),
-        inset 0 0 0 4px rgba(240, 199, 90, 0.45),
-        0 1px 0 rgba(255, 255, 255, 0.15),
-        0 8px 22px rgba(0, 0, 0, 0.45);
 }
 
 .hud-label {
@@ -99,6 +110,8 @@ body,
     filter: drop-shadow(0 2px 0 var(--wood-lo)) drop-shadow(0 0 8px rgba(240, 199, 90, 0.25));
 }
 
+/* Gold gradient text; the drop shadow lives on a parent (gradient text can't take text-shadow). */
+.gold-text,
 .hud-value .num {
     background: linear-gradient(180deg, var(--gold-hi) 10%, var(--gold) 55%, var(--gold-lo) 95%);
     -webkit-background-clip: text;
@@ -207,93 +220,202 @@ body,
     100% { opacity: 0; transform: translate(-50%, -50%) scale(0.85); }
 }
 
+/* ---------- Full-screen cards: title and game over ---------- */
+
 .overlay {
     position: absolute;
     inset: 0;
     display: grid;
     place-items: center;
-    background: rgba(0, 0, 0, 0.4);
-    color: white;
+    padding: 16px;
+    background: radial-gradient(ellipse at center, rgba(30, 12, 4, 0.35) 0%, rgba(12, 5, 2, 0.82) 100%);
     cursor: pointer;
     z-index: 20;
+    animation: overlay-in 0.3s ease-out;
 }
 
 .overlay .card {
-    padding: 28px 44px;
-    background: rgba(0, 0, 0, 0.55);
-    border: 1px solid rgba(255, 255, 255, 0.18);
-    border-radius: 12px;
+    --rivet: 16px;
+    --rivet-r: 3.5px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    max-width: min(92vw, 1000px);
+    padding: clamp(22px, 4vh, 44px) clamp(28px, 4vw, 64px);
     text-align: center;
-    backdrop-filter: blur(4px);
-}
-
-.overlay img {
-    width: 100%;
-    max-width: 1000px;
-    border: 20px solid #e8bd4a;
-}
-
-.overlay h1 {
-    margin: 0 0 8px;
-    font-size: 30px;
-    letter-spacing: 1px;
+    animation: card-in 0.45s cubic-bezier(0.2, 0.9, 0.25, 1.15);
 }
 
 .overlay p {
-    margin: 20px 0;
-    font-size: 30px;
-}
-
-.overlay .hint {
-    font-size: 16px;
-    opacity: 0.8;    
-}
-
-.overlay .card.game-over {
-    padding: 36px 64px;
-    cursor: default;
-}
-
-.overlay .game-over h1 {
-    font-size: 44px;
-    margin-bottom: 18px;
-}
-
-.overlay .final-score-label {
-    text-transform: uppercase;
-    letter-spacing: 3px;
-    font-size: 12px;
-    opacity: 0.7;
     margin: 0;
 }
 
-.overlay .final-score {
-    margin: 6px 0 24px;
-    font-size: 96px;
-    font-weight: 700;
-    line-height: 1;
-    font-variant-numeric: tabular-nums;
-    color: #ffd966;
-    text-shadow: 0 2px 12px rgba(0, 0, 0, 0.6);
+/* Gold rule with a centered diamond. */
+.ornament {
+    position: relative;
+    width: min(360px, 70%);
+    height: 12px;
+    margin: clamp(14px, 2.4vh, 24px) 0;
 }
 
-.overlay .new-game {
-    padding: 12px 28px;
-    font-size: 16px;
+.ornament::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 50%;
+    height: 2px;
+    margin-top: -1px;
+    background: linear-gradient(90deg, transparent, var(--gold) 20%, var(--gold) 80%, transparent);
+    opacity: 0.7;
+}
+
+.ornament span {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 10px;
+    height: 10px;
+    margin: -5px 0 0 -5px;
+    background: linear-gradient(135deg, var(--gold-hi), var(--gold-lo));
+    box-shadow: 0 0 0 3px var(--wood-lo), 0 0 10px rgba(240, 199, 90, 0.6);
+    transform: rotate(45deg);
+}
+
+/* Title card */
+
+.logo-frame {
+    width: min(100%, 860px);
+    padding: 6px;
+    background: linear-gradient(180deg, var(--gold-hi), var(--gold) 45%, var(--gold-lo));
+    border-radius: 4px;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.4), 0 0 0 3px var(--wood-lo), 0 6px 18px rgba(0, 0, 0, 0.5);
+}
+
+.logo-frame img {
+    display: block;
+    width: 100%;
+    border-radius: 2px;
+    box-shadow: inset 0 0 0 2px var(--wood-lo);
+}
+
+.cta {
+    margin-top: clamp(18px, 3vh, 30px) !important;
+    font-family: 'Bungee', 'Impact', system-ui, sans-serif;
+    font-size: clamp(26px, 3.2vw, 46px);
+    line-height: 1.1;
+    filter: drop-shadow(0 3px 0 var(--wood-lo)) drop-shadow(0 0 12px rgba(240, 199, 90, 0.35));
+    animation: cta-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes cta-pulse {
+    0%, 100% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.05); opacity: 0.8; }
+}
+
+.controls {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: clamp(12px, 2vw, 32px);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.controls li {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.controls .keys {
+    display: flex;
+    gap: 4px;
+}
+
+.controls kbd {
+    padding: 4px 9px 5px;
+    font-family: 'Oswald', system-ui, sans-serif;
     font-weight: 600;
-    letter-spacing: 0.5px;
-    color: #fff;
-    background: rgba(255, 255, 255, 0.12);
-    border: 1px solid rgba(255, 255, 255, 0.35);
-    border-radius: 8px;
+    font-size: clamp(11px, 0.9vw, 14px);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--wood-lo);
+    background: linear-gradient(180deg, var(--gold-hi), var(--gold) 60%, var(--gold-lo));
+    border-radius: 4px;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6), 0 2px 0 #6b4514, 0 3px 6px rgba(0, 0, 0, 0.5);
+}
+
+.controls .hud-label {
+    color: rgba(255, 233, 180, 0.85);
+}
+
+/* Game over card */
+
+.game-over-overlay {
+    cursor: default;
+}
+
+.overlay .card.game-over {
+    min-width: min(92vw, 460px);
+}
+
+.overlay .game-over h1 {
+    margin: 0;
+    font-family: 'Bungee', 'Impact', system-ui, sans-serif;
+    font-weight: 400;
+    font-size: clamp(40px, 5vw, 72px);
+    line-height: 1;
+    filter: drop-shadow(0 4px 0 var(--wood-lo)) drop-shadow(0 0 16px rgba(240, 199, 90, 0.35));
+}
+
+.overlay .game-over .hud-label {
+    font-size: clamp(12px, 1vw, 16px);
+}
+
+.overlay .final-score {
+    margin: 4px 0 clamp(20px, 3.5vh, 34px);
+    font-size: clamp(56px, 7vw, 104px);
+}
+
+.gold-button {
+    padding: 14px 40px 15px;
+    font-family: 'Bungee', 'Impact', system-ui, sans-serif;
+    font-size: clamp(16px, 1.4vw, 22px);
+    letter-spacing: 0.04em;
+    color: var(--wood-lo);
+    background: linear-gradient(180deg, var(--gold-hi), var(--gold) 50%, var(--gold-lo));
+    border: 2px solid var(--wood-lo);
+    border-radius: 6px;
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.7),
+        inset 0 -3px 0 rgba(107, 69, 20, 0.45),
+        0 0 0 2px var(--gold),
+        0 5px 0 #6b4514,
+        0 8px 18px rgba(0, 0, 0, 0.55);
     cursor: pointer;
-    transition: background 0.15s ease, transform 0.05s ease;
+    transition: filter 0.15s ease, transform 0.08s ease, box-shadow 0.08s ease;
 }
 
-.overlay .new-game:hover {
-    background: rgba(255, 255, 255, 0.22);
+.gold-button:hover {
+    filter: brightness(1.12) drop-shadow(0 0 12px rgba(240, 199, 90, 0.55));
 }
 
-.overlay .new-game:active {
-    transform: translateY(1px);
+.gold-button:active {
+    transform: translateY(4px);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.7),
+        inset 0 -3px 0 rgba(107, 69, 20, 0.45),
+        0 0 0 2px var(--gold),
+        0 1px 0 #6b4514,
+        0 3px 8px rgba(0, 0, 0, 0.55);
+}
+
+@keyframes overlay-in {
+    from { opacity: 0; }
+}
+
+@keyframes card-in {
+    from { opacity: 0; transform: translateY(16px) scale(0.94); }
 }
