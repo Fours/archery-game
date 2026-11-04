@@ -4,16 +4,23 @@ import { ArrowModel } from './ArrowModel'
 
 const SCALE = 2
 
-// ~23° back lean, shared by bows and quiver. Pre-derived position constants
-// below place the bottom (or lower tip) on the ground at y=0 and the contact
-// surface against the counter top edge at world y≈0.95, z=FRONT_Z=-2.
+// ~23° back lean, shared by the quiver and the default bow pose. Pre-derived
+// position constants below place the bottom (or lower tip) on the ground at
+// y=0 and the contact surface against the counter top edge at world y≈0.95,
+// z=FRONT_Z=-2.
 const LEAN = 0.4
 
-// Bow grip (group origin) for scale 2 + rot.x = -LEAN with lower tip on ground.
-//   y_g = 1.1*cos(LEAN) + 0.12*sin(LEAN)            (lower tip → y=0)
-//   z_g = -2 + 0.95*tan(LEAN) - 1.1*sin(LEAN) + 0.12*cos(LEAN)   (touches railing)
-const BOW_Y_G = 1.06
-const BOW_Z_G = -1.915
+// Bow grip (group origin) for scale 2 + rot.x = -lean with lower tip on ground
+// and the back face touching the counter edge. Keeps a leaning bow planted no
+// matter its lean angle, so each bow can lean differently.
+//   y_g = 1.1*cos(lean) + 0.12*sin(lean)            (lower tip → y=0)
+//   z_g = -2 + 0.95*tan(lean) - 1.1*sin(lean) + 0.12*cos(lean)   (touches railing)
+function bowPose(lean: number): { y: number; z: number } {
+    return {
+        y: 1.1 * Math.cos(lean) + 0.12 * Math.sin(lean),
+        z: -2 + 0.95 * Math.tan(lean) - 1.1 * Math.sin(lean) + 0.12 * Math.cos(lean),
+    }
+}
 
 const QUIVER_HEIGHT = 0.55      // local; world height = 1.1 at scale 2
 const QUIVER_RADIUS_TOP = 0.075
@@ -51,7 +58,20 @@ const ARROWS: ArrowSpec[] = [
     { x: -0.040, z: -0.020, fletchColor: 0xd13a3a },
 ]
 
-const BOW_X_POSITIONS = [-4.6, -3.8, 4.6] // two left front, one right front
+interface BowSpec {
+    x: number
+    lean: number // back-lean about X; bowPose() keeps the tip planted
+    yaw?: number // twist about Y so the bow face angles sideways
+}
+
+// Two left-front bows and one right-front bow. The front-left bow (nearest the
+// player) leans back more and twists outward so the pair reads as two bows
+// propped at different angles rather than a mirrored copy.
+const BOW_SPECS: BowSpec[] = [
+    { x: -4.6, lean: LEAN },
+    { x: -3.55, lean: 0.56, yaw: -0.22 },
+    { x: 4.6, lean: LEAN },
+]
 // Sits next to the right bow (x = +4.6) so the right side has a bow + quiver,
 // balancing the two bows on the left.
 const QUIVER_X = 3.5
@@ -76,11 +96,16 @@ export class FrontRailing {
     }
 
     private addBows(): void {
-        for (const x of BOW_X_POSITIONS) {
+        for (const spec of BOW_SPECS) {
             const bow = new Bow()
             bow.group.scale.setScalar(SCALE)
-            bow.group.rotation.x = -LEAN
-            bow.group.position.set(x, BOW_Y_G, BOW_Z_G)
+            // 'YXZ' so the yaw twist spins the bow about its own upright axis
+            // before the back-lean, rather than swinging the leaned tip around.
+            bow.group.rotation.order = 'YXZ'
+            bow.group.rotation.y = spec.yaw ?? 0
+            bow.group.rotation.x = -spec.lean
+            const { y, z } = bowPose(spec.lean)
+            bow.group.position.set(spec.x, y, z)
             this.group.add(bow.group)
             this.bows.push(bow)
         }
