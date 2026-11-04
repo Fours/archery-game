@@ -1,6 +1,6 @@
 import * as THREE from 'three'
 import { HALF_WIDTH } from './Booth'
-import { TIER_COLOR, TIER_DARK_COLOR, TIER_MULTIPLIER } from './Target'
+import { TIER_COLOR, TIER_MULTIPLIER } from './Target'
 import type { Tier } from './Target'
 
 const FLAG_WIDTH = 0.75
@@ -8,6 +8,15 @@ const FLAG_HEIGHT = 1.0
 const WALL_OFFSET = 0.04
 const TEXTURE_W = 512
 const TEXTURE_H = 768
+
+// Border/label color per tier. Lighter than Target's TIER_DARK_COLOR (which is
+// near-black so disabled rings read as "dead") so the pennant border reads as a
+// clear dark green/blue/purple against its active fill rather than as black.
+const FLAG_BORDER_COLOR: Record<Tier, number> = {
+    green: 0x1c5e2a,
+    blue: 0x19386e,
+    purple: 0x401e5c,
+}
 
 export interface RowFlagSpec {
     tier: Tier
@@ -37,7 +46,7 @@ export class RowFlags {
         for (const row of rows) {
             const tex = makeFlagTexture(
                 TIER_COLOR[row.tier],
-                TIER_DARK_COLOR[row.tier],
+                FLAG_BORDER_COLOR[row.tier],
                 `${TIER_MULTIPLIER[row.tier]}X`,
             )
             this.textures.push(tex)
