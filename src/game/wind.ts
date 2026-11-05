@@ -108,3 +108,10 @@ export function addWind<T extends THREE.Material>(material: T, time: WindTime, p
     material.customProgramCacheKey = () => `${previousKey()}-wind-${JSON.stringify(profile)}`
     return material
 }
+
+/** CPU mirror of the ground-cover gust envelope (0.1..1) at a world XZ point,
+ *  so ambience can swell in step with the grass waves. */
+export function groundGustAt(time: number, x = 0, z = 0): number {
+    const along = x * WIND_DIRECTION.x + z * WIND_DIRECTION.y
+    return 0.55 + 0.45 * Math.sin(time * GROUND_GUST_SPEED - along * GROUND_GUST_WAVENUMBER)
+}

@@ -3,6 +3,7 @@ import './App.css'
 import { Game, ROUND_DURATION } from './game/Game'
 import { Hud } from './Hud'
 import { GameOverScreen, StartScreen } from './Screens'
+import { SoundToggle } from './SoundToggle'
 
 function App() {
     const containerRef = useRef<HTMLDivElement>(null)
@@ -11,10 +12,11 @@ function App() {
     const [score, setScore] = useState(0)
     const [gameOver, setGameOver] = useState(false)
     const [timeLeft, setTimeLeft] = useState(ROUND_DURATION)
+    const [muted, setMuted] = useState(false)
 
     useEffect(() => {
         if (!containerRef.current) return
-        const game = new Game(containerRef.current, setLocked, setScore, setGameOver, setTimeLeft)
+        const game = new Game(containerRef.current, setLocked, setScore, setGameOver, setTimeLeft, setMuted)
         gameRef.current = game
         return () => {
             game.dispose()
@@ -40,6 +42,7 @@ function App() {
                 gameOver={gameOver}
             />
             {!gameOver && <div className="crosshair" />}
+            <SoundToggle muted={muted} onToggle={() => gameRef.current?.toggleMute()} />
         </div>
     )
 }

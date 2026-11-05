@@ -121,6 +121,11 @@ export class World {
         this.windTime.value += dt
     }
 
+    /** Seconds on the shared wind clock. */
+    get windClock(): number {
+        return this.windTime.value
+    }
+
     dispose(): void {
         this.scene.remove(this.group)
         this.scene.environment = null

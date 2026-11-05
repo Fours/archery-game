@@ -1,11 +1,13 @@
 import * as THREE from 'three'
 import { Arrow } from './Arrow'
+import { AudioManager } from './audio/AudioManager'
 import { Bow } from './Bow'
 import { HitEffect } from './HitEffect'
 import { Level } from './Level'
 import { LEVELS } from './levels'
 import { PostFX } from './PostFX'
 import { World } from './World'
+import { groundGustAt } from './wind'
 
 const EYE_HEIGHT = 1.7
 const MAX_DRAW_TIME = 2.0
@@ -15,11 +17,14 @@ const MOUSE_SENSITIVITY = 0.0022
 const MAX_PITCH = Math.PI / 2 - 0.001
 export const ROUND_DURATION = 120
 const EXPOSURE = 1.15
+/** Seconds left at which the countdown starts ticking (matches the HUD's danger state). */
+const TICK_FROM = 10
 
 type LockListener = (locked: boolean) => void
 type ScoreListener = (score: number) => void
 type GameOverListener = (gameOver: boolean) => void
 type TimeListener = (timeLeft: number) => void
+type MuteListener = (muted: boolean) => void
 
 export class Game {
     private container: HTMLElement
@@ -27,6 +32,7 @@ export class Game {
     private onScoreChange: ScoreListener
     private onGameOver: GameOverListener
     private onTimeChange: TimeListener
+    private onMuteChange: MuteListener
 
     private renderer: THREE.WebGLRenderer
     private postfx: PostFX
@@ -38,6 +44,7 @@ export class Game {
     private levelIndex = 0
     private arrows: Arrow[] = []
     private effects: HitEffect[] = []
+    private audio: AudioManager
 
     private locked = false
     private euler = new THREE.Euler(0, 0, 0, 'YXZ')
@@ -61,12 +68,14 @@ export class Game {
         onScoreChange: ScoreListener,
         onGameOver: GameOverListener,
         onTimeChange: TimeListener,
+        onMuteChange: MuteListener,
     ) {
         this.container = container
         this.onLockChange = onLockChange
         this.onScoreChange = onScoreChange
         this.onGameOver = onGameOver
         this.onTimeChange = onTimeChange
+        this.onMuteChange = onMuteChange
 
         // MSAA happens inside PostFX's render target, so the default framebuffer skips it.
         this.renderer = new THREE.WebGLRenderer({ antialias: false })
@@ -99,6 +108,9 @@ export class Game {
         this.camera.add(this.bow.group)
 
         this.postfx = new PostFX(this.renderer, this.scene, this.camera)
+
+        this.audio = new AudioManager()
+        this.onMuteChange(this.audio.muted)
 
         window.addEventListener('resize', this.onResize)
         window.addEventListener('keydown', this.onKeyDown)
@@ -136,6 +148,8 @@ export class Game {
     }
 
     requestLock(): void {
+        // Called from a click, so this is where the browser lets audio start.
+        this.audio.unlock()
         if (this.gameOver) return
         if (!this.locked) {
             this.renderer.domElement.requestPointerLock()
@@ -144,6 +158,7 @@ export class Game {
 
     /** Reset the round: rebuild the current level, zero the score, resume play. */
     restart(): void {
+        this.audio.unlock()
         this.loadLevel(this.levelIndex)
 
         this.score = 0
@@ -167,7 +182,13 @@ export class Game {
         if (document.pointerLockElement === this.renderer.domElement) {
             document.exitPointerLock()
         }
+        this.audio.roundOver()
         this.onGameOver(true)
+    }
+
+    toggleMute(): void {
+        this.audio.unlock()
+        this.onMuteChange(this.audio.toggleMute())
     }
 
     dispose(): void {
@@ -206,6 +227,7 @@ export class Game {
         })
         this.postfx.dispose()
         this.renderer.dispose()
+        this.audio.dispose()
 
         const canvas = this.renderer.domElement
         if (canvas.parentNode === this.container) {
@@ -236,10 +258,16 @@ export class Game {
     }
 
     private onKeyDown = (e: KeyboardEvent): void => {
+        this.audio.unlock()
+        if (e.code === 'KeyM' && !e.repeat) {
+            this.toggleMute()
+            return
+        }
         if (e.code === 'Space' && this.locked && !this.spaceHeld) {
             this.spaceHeld = true
             this.drawing = true
             this.drawTime = 0
+            this.audio.drawStart()
             e.preventDefault()
         }
     }
@@ -252,6 +280,7 @@ export class Game {
 
         const strength = Math.min(this.drawTime / MAX_DRAW_TIME, 1)
         this.fireArrow(strength)
+        this.audio.release(strength)
 
         this.drawing = false
         this.drawTime = 0
@@ -297,10 +326,12 @@ export class Game {
             this.effects.push(effect)
             this.score += bestHit.score
             this.onScoreChange(this.score)
+            this.audio.targetHit(bestHit.point, bestHit.score, bestHit.multiplier, bestHit.target.isDisabled)
             return 'target'
         }
         if (groundT < Infinity) {
             arrow.stickToGround()
+            this.audio.groundHit(arrow.tip)
             return 'ground'
         }
         return null
@@ -331,6 +362,7 @@ export class Game {
                 if (displayTime !== this.lastEmittedTime) {
                     this.lastEmittedTime = displayTime
                     this.onTimeChange(displayTime)
+                    if (displayTime > 0 && displayTime <= TICK_FROM) this.audio.tick(displayTime)
                 }
             }
 
@@ -377,6 +409,9 @@ export class Game {
                 this.triggerGameOver()
             }
         }
+
+        this.audio.setDraw(this.drawing ? this.drawTime / MAX_DRAW_TIME : 0)
+        this.audio.update(dt, this.camera, groundGustAt(this.world.windClock))
 
         this.postfx.render()
     }

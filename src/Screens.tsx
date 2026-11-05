@@ -7,6 +7,7 @@ const CONTROLS: { keys: string[]; action: string }[] = [
     { keys: ['Hold', 'Space'], action: 'Draw' },
     { keys: ['Release'], action: 'Fire' },
     { keys: ['Esc'], action: 'Pause' },
+    { keys: ['M'], action: 'Sound' },
 ]
 
 /** Title card shown before play and whenever pointer lock is released mid-round. */

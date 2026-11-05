@@ -419,3 +419,30 @@ body,
 @keyframes card-in {
     from { opacity: 0; transform: translateY(16px) scale(0.94); }
 }
+
+/* Mute toggle: bottom-right, above the HUD and overlays so it works on any screen. */
+.sound-toggle {
+    --rivet: 6px;
+    --rivet-r: 1.5px;
+    position: absolute;
+    right: clamp(12px, 2.5vh, 28px);
+    bottom: clamp(12px, 2.5vh, 28px);
+    z-index: 30;
+    display: grid;
+    place-items: center;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    cursor: pointer;
+    color: var(--gold);
+    transition: color 0.15s ease, transform 0.15s ease;
+}
+
+.sound-toggle:hover {
+    color: var(--gold-hi);
+    transform: scale(1.06);
+}
+
+.sound-toggle[aria-pressed='true'] {
+    color: rgba(255, 233, 180, 0.45);
+}
