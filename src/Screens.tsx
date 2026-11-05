@@ -1,4 +1,4 @@
-import logo from './assets/archery-blitz-logo.png'
+import logo from './assets/archery-blitz-logo.jpg'
 import { ScoreDigits } from './ScoreDigits'
 import { useCountUp } from './useCountUp'
 
