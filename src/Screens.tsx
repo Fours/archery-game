@@ -66,6 +66,31 @@ export function GameOverScreen({ score, onNewGame }: { score: number; onNewGame:
     )
 }
 
+/** Shown instead of the game on phones, tablets and narrow windows. */
+export function UnsupportedScreen() {
+    return (
+        <div className="game-root unsupported-root">
+            <div className="overlay unsupported-overlay">
+                <div className="plaque card unsupported">
+                    <div className="logo-frame">
+                        <img src={logo} alt="Archery Blitz" />
+                    </div>
+                    <Ornament />
+                    <h1>
+                        <span className="gold-text">Sorry, archer!</span>
+                    </h1>
+                    <p className="unsupported-message">
+                        A mobile version is currently unavailable for this game.
+                    </p>
+                    <p className="hud-label unsupported-hint">
+                        Visit on a desktop or laptop with a mouse and keyboard to play.
+                    </p>
+                </div>
+            </div>
+        </div>
+    )
+}
+
 /** Gold rule with a diamond in the middle, used as a divider on the cards. */
 function Ornament() {
     return (

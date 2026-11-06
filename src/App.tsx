@@ -1,49 +1,35 @@
-import { useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useSyncExternalStore } from 'react'
 import './App.css'
-import { Game, ROUND_DURATION } from './game/Game'
-import { Hud } from './Hud'
-import { GameOverScreen, StartScreen } from './Screens'
-import { SoundToggle } from './SoundToggle'
+import { UnsupportedScreen } from './Screens'
+
+/**
+ * Screens where the game can't be played: anything narrower than a small
+ * laptop, or a touch-only device (no mouse for pointer lock, no keyboard for
+ * Space) — which also catches phones held in landscape.
+ */
+const UNSUPPORTED_QUERY = '(max-width: 1024px), (hover: none) and (pointer: coarse)'
+
+// Loaded lazily so Three.js and the game code are never downloaded on devices
+// that only get the unsupported screen.
+const GameView = lazy(() => import('./GameView'))
+
+function subscribe(onChange: () => void) {
+    const mql = window.matchMedia(UNSUPPORTED_QUERY)
+    mql.addEventListener('change', onChange)
+    return () => mql.removeEventListener('change', onChange)
+}
+
+function isUnsupported() {
+    return window.matchMedia(UNSUPPORTED_QUERY).matches
+}
 
 function App() {
-    const containerRef = useRef<HTMLDivElement>(null)
-    const gameRef = useRef<Game | null>(null)
-    const [locked, setLocked] = useState(false)
-    const [score, setScore] = useState(0)
-    const [gameOver, setGameOver] = useState(false)
-    const [timeLeft, setTimeLeft] = useState(ROUND_DURATION)
-    const [muted, setMuted] = useState(false)
-
-    useEffect(() => {
-        if (!containerRef.current) return
-        const game = new Game(containerRef.current, setLocked, setScore, setGameOver, setTimeLeft, setMuted)
-        gameRef.current = game
-        return () => {
-            game.dispose()
-            gameRef.current = null
-        }
-    }, [])
-
+    const unsupported = useSyncExternalStore(subscribe, isUnsupported)
+    if (unsupported) return <UnsupportedScreen />
     return (
-        <div
-            ref={containerRef}
-            className="game-root"
-            onClick={() => {
-                if (gameOver) return
-                gameRef.current?.requestLock()
-            }}
-        >
-            {!locked && !gameOver && <StartScreen paused={timeLeft < ROUND_DURATION} />}
-            {gameOver && <GameOverScreen score={score} onNewGame={() => gameRef.current?.restart()} />}
-            <Hud
-                score={score}
-                timeLeft={timeLeft}
-                locked={locked}
-                gameOver={gameOver}
-            />
-            {!gameOver && <div className="crosshair" />}
-            <SoundToggle muted={muted} onToggle={() => gameRef.current?.toggleMute()} />
-        </div>
+        <Suspense fallback={<div className="game-root" />}>
+            <GameView />
+        </Suspense>
     )
 }
 

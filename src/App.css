@@ -446,3 +446,47 @@ body,
 .sound-toggle[aria-pressed='true'] {
     color: rgba(255, 233, 180, 0.45);
 }
+
+/* ---------- Unsupported device (phones, tablets, narrow windows) ---------- */
+
+.unsupported-root {
+    background: linear-gradient(180deg, #87ceeb 0%, #cfe9c4 60%, #6f9a4a 100%);
+}
+
+.unsupported-overlay {
+    overflow-y: auto;
+    cursor: default;
+}
+
+.overlay .card.unsupported {
+    box-sizing: border-box;
+    width: min(100%, 560px);
+    padding: clamp(30px, 7vw, 52px) clamp(18px, 5vw, 40px);
+}
+
+.overlay .unsupported .ornament {
+    margin: clamp(14px, 3vw, 22px) 0;
+}
+
+.overlay .unsupported h1 {
+    margin: 0 0 10px;
+    font-family: 'Bungee', 'Impact', system-ui, sans-serif;
+    font-weight: 400;
+    font-size: clamp(26px, 7vw, 40px);
+    line-height: 1.1;
+    filter: drop-shadow(0 3px 0 var(--wood-lo)) drop-shadow(0 0 12px rgba(240, 199, 90, 0.35));
+}
+
+.unsupported-message {
+    font-family: 'Oswald', system-ui, sans-serif;
+    font-size: clamp(17px, 4.4vw, 22px);
+    line-height: 1.35;
+    color: var(--gold-hi);
+}
+
+.overlay .unsupported-hint {
+    margin-top: 14px;
+    font-size: clamp(11px, 3vw, 13px);
+    line-height: 1.5;
+    color: rgba(255, 233, 180, 0.75);
+}
